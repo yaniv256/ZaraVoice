@@ -121,7 +121,7 @@ struct LoginView: View {
     
     @MainActor
     private func performGoogleWebAuth() async {
-        let clientId = "446740474721-tqs3tqod90sjp64mosfqmq1f6mlt8rne.apps.googleusercontent.com"
+        let clientId = "446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c.apps.googleusercontent.com"
         let redirectUri = "com.agentflow.zaravoice:/oauth2callback"
         let scope = "email profile"
         
