@@ -122,7 +122,7 @@ struct LoginView: View {
     @MainActor
     private func performGoogleWebAuth() async {
         let clientId = "446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c.apps.googleusercontent.com"
-        let redirectUri = "com.agentflow.zaravoice:/oauth2callback"
+        let redirectUri = "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c:/oauth2callback"
         let scope = "email profile"
         
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
@@ -139,7 +139,7 @@ struct LoginView: View {
         // Use ASWebAuthenticationSession for secure OAuth flow
         let session = ASWebAuthenticationSession(
             url: url,
-            callbackURLScheme: "com.agentflow.zaravoice"
+            callbackURLScheme: "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c"
         ) { callbackURL, error in
             if let error = error {
                 Task { @MainActor in
@@ -175,7 +175,7 @@ struct LoginView: View {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             
-            let body = ["code": code, "redirect_uri": "com.agentflow.zaravoice:/oauth2callback"]
+            let body = ["code": code, "redirect_uri": "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c:/oauth2callback"]
             request.httpBody = try JSONEncoder().encode(body)
             
             let (data, response) = try await URLSession.shared.data(for: request)

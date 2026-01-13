@@ -26,10 +26,10 @@
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>CFBundleURLName</key>
-            <string>com.agentflow.zaravoice</string>
+            <string>com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>com.agentflow.zaravoice</string>
+                <string>com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c</string>
             </array>
         </dict>
     </array>
