@@ -1,9 +1,13 @@
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 
 struct LoginView: View {
     @StateObject private var authManager = AuthManager.shared
     @Environment(\.colorScheme) var colorScheme
+    
+    // PKCE state
+    @State private var codeVerifier: String = ""
     
     var body: some View {
         ZStack {
@@ -112,6 +116,25 @@ struct LoginView: View {
         }
     }
     
+    // PKCE helper functions
+    private func generateCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+    
+    private func generateCodeChallenge(from verifier: String) -> String {
+        let data = Data(verifier.utf8)
+        let hash = SHA256.hash(data: data)
+        return Data(hash).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+    
     private func startGoogleSignIn() {
         // Open Google OAuth in browser (ASWebAuthenticationSession)
         Task {
@@ -125,13 +148,20 @@ struct LoginView: View {
         let redirectUri = "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c:/oauth2callback"
         let scope = "email profile"
         
+        // Generate PKCE code verifier and challenge
+        let verifier = generateCodeVerifier()
+        codeVerifier = verifier
+        let challenge = generateCodeChallenge(from: verifier)
+        
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         components.queryItems = [
             URLQueryItem(name: "client_id", value: clientId),
             URLQueryItem(name: "redirect_uri", value: redirectUri),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "access_type", value: "offline")
+            URLQueryItem(name: "access_type", value: "offline"),
+            URLQueryItem(name: "code_challenge", value: challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
         ]
         
         guard let url = components.url else { return }
@@ -156,7 +186,7 @@ struct LoginView: View {
             
             // Exchange code for token with our backend
             Task {
-                await exchangeGoogleCode(code: code)
+                await exchangeGoogleCode(code: code, verifier: verifier)
             }
         }
         
@@ -166,7 +196,7 @@ struct LoginView: View {
     }
     
     @MainActor
-    private func exchangeGoogleCode(code: String) async {
+    private func exchangeGoogleCode(code: String, verifier: String) async {
         authManager.isLoading = true
         
         do {
@@ -175,7 +205,11 @@ struct LoginView: View {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             
-            let body = ["code": code, "redirect_uri": "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c:/oauth2callback"]
+            let body: [String: String] = [
+                "code": code,
+                "redirect_uri": "com.googleusercontent.apps.446740474721-bn1j0m9g981o1hd0ul1c82mgk5m2as3c:/oauth2callback",
+                "code_verifier": verifier
+            ]
             request.httpBody = try JSONEncoder().encode(body)
             
             let (data, response) = try await URLSession.shared.data(for: request)
