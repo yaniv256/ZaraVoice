@@ -270,3 +270,81 @@ Copy app to /tmp first and chmod 755. Yaniv can't read agent-zara's home directo
 ## Version History
 
 - **2026-01-12**: Initial release with Google OAuth + PKCE, voice recording, TTS playback
+
+---
+
+## Simulator Login via ComputerUseMCP
+
+When the app loses authentication (after reinstall), use ComputerUseMCP to complete the OAuth login flow.
+
+### Prerequisites
+
+1. ComputerUseMCP running on Mac (port 3456)
+2. iOS Simulator running with ZaraVoice launched
+
+### Launch App in Simulator
+
+```bash
+# SSH to Mac
+ssh -i ~/.ssh/id_ed25519_mac -o IdentitiesOnly=yes -p 2223 agent-zara@localhost
+
+# Build and install
+cd /Users/agent-zara/Projects/ZaraVoice && git pull && \
+xcodebuild -project ZaraVoice.xcodeproj -scheme ZaraVoice \
+  -destination "platform=iOS Simulator,name=iPhone 16e" \
+  -derivedDataPath /tmp/ZaraVoiceBuild build && \
+sudo -u yaniv xcrun simctl install "iPhone 16e" \
+  /tmp/ZaraVoiceBuild/Build/Products/Debug-iphonesimulator/ZaraVoice.app && \
+sudo -u yaniv xcrun simctl launch "iPhone 16e" net.agentflow.ZaraVoice
+```
+
+### Screenshot and Click Commands
+
+**Take screenshot (from WSL):**
+```bash
+ssh -i ~/.ssh/id_ed25519_mac -o IdentitiesOnly=yes -p 2223 agent-zara@localhost \
+  "curl -s -X POST http://localhost:3456/mcp \
+   -H 'Content-Type: application/json' \
+   -H 'Accept: application/json, text/event-stream' \
+   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"computer","arguments":{"action":"get_screenshot"}},"id":1}' \
+   > /tmp/screenshot.json && \
+   python3 -c \"import json,base64; r=json.load(open(/tmp/screenshot.json)); img=[c for c in r[result][content] if c[type]==image][0][data]; open(/tmp/mac_screenshot.png,wb).write(base64.b64decode(img))\""
+
+scp -i ~/.ssh/id_ed25519_mac -o IdentitiesOnly=yes -P 2223 agent-zara@localhost:/tmp/mac_screenshot.png /tmp/mac_screenshot.png
+```
+
+**Click at coordinates:**
+```bash
+ssh -i ~/.ssh/id_ed25519_mac -o IdentitiesOnly=yes -p 2223 agent-zara@localhost \
+  "curl -s -X POST http://localhost:3456/mcp \
+   -H 'Content-Type: application/json' \
+   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"computer","arguments":{"action":"left_click","coordinate":[X,Y]}},"id":1}'"
+```
+
+### Login Flow Steps
+
+1. **Screenshot** - Verify app shows login screen
+2. **Click "Sign in with Google"** - Approx (694, 623)
+3. **Click "Continue"** on OAuth dialog - Approx (694, 583)
+4. **Wait 2-3 seconds** for Google sign-in page to load
+5. **Click email account** - Approx (694, 470)
+6. **Click "Continue"** on consent page - Approx (694, 600)
+7. **Screenshot** - Verify Settings shows "Connected to Zara" (green dot)
+
+**Note:** Coordinates depend on simulator window position. Always take a screenshot first to verify button locations!
+
+### Verification After Login
+
+Check Settings tab shows:
+- ✅ Green "Connected to Zara" status
+- ✅ Auth Token displayed in Debug section
+- ✅ SSE Error shows "None"
+
+### Why Login Is Lost
+
+The auth token is stored in UserDefaults for the simulator. When you:
+- Uninstall and reinstall the app
+- Reset simulator content
+- Switch to a different simulator device
+
+...the token is cleared and you need to log in again.
