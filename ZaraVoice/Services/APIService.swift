@@ -97,36 +97,6 @@ class APIService {
         return try JSONDecoder().decode(UploadResponse.self, from: data)
     }
 
-    // MARK: - Upload Video Frame (for continuous video watching)
-    func uploadVideoFrame(imageData: Data) async throws -> UploadResponse {
-        let url = URL(string: "\(baseURL)/video-frame")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        addAuthHeader(to: &request)
-
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        var body = Data()
-
-        // Frame file (JPEG for smaller size)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"frame\"; filename=\"frame.jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw APIError.requestFailed
-        }
-
-        return try JSONDecoder().decode(UploadResponse.self, from: data)
-    }
-
     // MARK: - Upload Debug Screenshot
     func uploadDebugScreenshot(imageData: Data, logs: [String], elements: [[String: Any]]) async throws -> UploadResponse {
         let url = URL(string: "\(baseURL)/debug-upload")!
@@ -206,6 +176,64 @@ class APIService {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
         }
+    }
+
+    // MARK: - Video Watch Control
+
+    func startVideoWatch(context: String = "") async throws {
+        let url = URL(string: "\(baseURL)/video-frame/start")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // No auth needed - bypass route
+
+        let body: [String: String] = ["context": context]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw APIError.requestFailed
+        }
+    }
+
+    func stopVideoWatch() async throws {
+        let url = URL(string: "\(baseURL)/video-frame/stop")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // No auth needed - bypass route
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw APIError.requestFailed
+        }
+    }
+
+    func uploadVideoFrame(imageData: Data) async throws -> UploadResponse {
+        let url = URL(string: "\(baseURL)/video-frame")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        // No auth needed - bypass route
+
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"frame\"; filename=\"frame.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw APIError.requestFailed
+        }
+
+        return try JSONDecoder().decode(UploadResponse.self, from: data)
     }
 }
 

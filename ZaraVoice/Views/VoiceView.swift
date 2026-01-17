@@ -333,10 +333,15 @@ struct VoiceView: View {
         isVideoWatching = true
         frameCount = 0
         addLog("📹 Video watch started (\(Int(captureInterval))s interval)")
-        
+
+        // Notify EC2 that watching has started
+        Task {
+            try? await APIService.shared.startVideoWatch()
+        }
+
         // Capture first frame immediately
         captureVideoFrame()
-        
+
         // Start timer for subsequent frames
         captureTimer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
             captureVideoFrame()
@@ -348,6 +353,11 @@ struct VoiceView: View {
         captureTimer?.invalidate()
         captureTimer = nil
         addLog("📹 Video watch stopped (\(frameCount) frames captured)")
+
+        // Notify EC2 that watching has stopped
+        Task {
+            try? await APIService.shared.stopVideoWatch()
+        }
     }
     
     private func captureVideoFrame() {
