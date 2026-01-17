@@ -574,7 +574,7 @@ extension AudioManager: AVAudioPlayerDelegate {
                 // No more audio - resume recording if we were listening
                 if self.isListening {
                     self.audioRecorder?.record()
-                    self.logger.debug("Resumed recording after all playback complete")
+                    logger.debug("Resumed recording after all playback complete")
                 }
                 self.status = self.isListening ? .listening : .ready
             }
