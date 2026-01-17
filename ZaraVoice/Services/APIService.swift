@@ -192,12 +192,16 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // No auth needed - bypass route
+        addAuthHeader(to: &request)
 
         let body: [String: String] = ["context": context]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
+
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
         }
@@ -208,9 +212,13 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // No auth needed - bypass route
+        addAuthHeader(to: &request)
 
         let (_, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
+
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
         }
@@ -220,7 +228,7 @@ class APIService {
         let url = URL(string: "\(baseURL)/video-frame")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        // No auth needed - bypass route
+        addAuthHeader(to: &request)
 
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -235,6 +243,9 @@ class APIService {
         request.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
