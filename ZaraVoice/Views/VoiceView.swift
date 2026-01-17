@@ -236,6 +236,8 @@ struct VoiceView: View {
         sendChunk(audioData)
     }
 
+    private func addLog(_ message: String) {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logs.insert("\(timestamp): \(message)", at: 0)
         if logs.count > 50 {
             logs.removeLast()
