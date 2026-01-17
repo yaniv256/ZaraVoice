@@ -6,8 +6,9 @@ class CameraManager: NSObject, ObservableObject {
 
     @Published var isCameraAvailable = false
     @Published var capturedImage: UIImage?
+    @Published var isSessionRunning = false
 
-    private var captureSession: AVCaptureSession?
+    private(set) var captureSession: AVCaptureSession?
     private var photoOutput: AVCapturePhotoOutput?
     private var currentCameraPosition: AVCaptureDevice.Position = .front
 
@@ -22,14 +23,15 @@ class CameraManager: NSObject, ObservableObject {
         isCameraAvailable = UIImagePickerController.isSourceTypeAvailable(.camera)
     }
 
-    func setupCamera(position: AVCaptureDevice.Position = .front) {
+    func setupCamera(position: AVCaptureDevice.Position = .front, forceReset: Bool = false) {
         guard isCameraAvailable else { return }
-        
-        // If already set up with same position, skip
-        if captureSession != nil && currentCameraPosition == position {
+
+        // If already set up with same position and not forcing reset, skip
+        if captureSession != nil && currentCameraPosition == position && !forceReset {
             return
         }
 
+        // Clear existing session
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
         currentCameraPosition = position
@@ -46,6 +48,29 @@ class CameraManager: NSObject, ObservableObject {
         photoOutput = AVCapturePhotoOutput()
         if let photoOutput = photoOutput, captureSession?.canAddOutput(photoOutput) == true {
             captureSession?.addOutput(photoOutput)
+        }
+    }
+
+    func startSession(position: AVCaptureDevice.Position = .back) {
+        // Force reset if position changed
+        let needsReset = currentCameraPosition != position
+        setupCamera(position: position, forceReset: needsReset)
+        guard let session = captureSession, !session.isRunning else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            session.startRunning()
+            DispatchQueue.main.async {
+                self.isSessionRunning = true
+            }
+        }
+    }
+
+    func stopSession() {
+        guard let session = captureSession, session.isRunning else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            session.stopRunning()
+            DispatchQueue.main.async {
+                self.isSessionRunning = false
+            }
         }
     }
 

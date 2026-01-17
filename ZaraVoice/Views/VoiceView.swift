@@ -6,12 +6,8 @@ struct VoiceView: View {
     @State private var transcribedText = ""
     @State private var logs: [String] = []
     
-    // Video watch mode state
-    @State private var isVideoWatching = false
-    @State private var captureInterval: TimeInterval = 30  // seconds
-    @State private var captureTimer: Timer?
-    @State private var frameCount = 0
-    @State private var lastCapturedFrame: UIImage?
+    // Video watch mode
+    @State private var showingVideoWatch = false
 
     var body: some View {
         NavigationView {
@@ -34,11 +30,6 @@ struct VoiceView: View {
                     // Main control button
                     mainButton
 
-                    // Video watch controls (show when in video mode)
-                    if isVideoWatching {
-                        videoWatchControls
-                    }
-
                     // Secondary buttons
                     secondaryButtons
                 }
@@ -49,6 +40,9 @@ struct VoiceView: View {
             .toolbarBackground(Color(red: 0.1, green: 0.1, blue: 0.18), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .fullScreenCover(isPresented: $showingVideoWatch) {
+                VideoWatchView()
+            }
         }
         .onAppear {
             sseClient.connect()
@@ -153,54 +147,6 @@ struct VoiceView: View {
         .animation(.easeInOut(duration: 0.2), value: audioManager.isRecording)
     }
 
-    private var videoWatchControls: some View {
-        VStack(spacing: 12) {
-            // Preview of last captured frame
-            if let lastFrame = lastCapturedFrame {
-                Image(uiImage: lastFrame)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(height: 120)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.green, lineWidth: 2)
-                    )
-            }
-
-            HStack(spacing: 16) {
-                // Decrease interval
-                Button(action: { adjustInterval(by: -5) }) {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                }
-
-                Text("\(Int(captureInterval))s")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(width: 50)
-
-                // Increase interval
-                Button(action: { adjustInterval(by: 5) }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                }
-
-                Spacer().frame(width: 20)
-
-                Text("Frames: \(frameCount)")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .background(Color.red.opacity(0.2))
-        .cornerRadius(10)
-    }
-
     private var secondaryButtons: some View {
         VStack(spacing: 12) {
             HStack(spacing: 20) {
@@ -238,15 +184,14 @@ struct VoiceView: View {
                 }
             }
             
-            // Video Watch toggle button
-            Button(action: toggleVideoWatch) {
-                Label(isVideoWatching ? "Stop Watching" : "Video Watch", 
-                      systemImage: isVideoWatching ? "stop.circle.fill" : "video.fill")
+            // Video Watch button - opens full screen camera
+            Button(action: { showingVideoWatch = true }) {
+                Label("Video Watch", systemImage: "video.fill")
                     .font(.caption)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
-                    .background(isVideoWatching ? Color.red.opacity(0.5) : Color.green.opacity(0.3))
-                    .foregroundColor(isVideoWatching ? .red : .green)
+                    .background(Color.green.opacity(0.3))
+                    .foregroundColor(.green)
                     .cornerRadius(8)
             }
         }
@@ -331,80 +276,6 @@ struct VoiceView: View {
                 addLog("Debug info sent!")
             } catch {
                 addLog("Debug error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    // MARK: - Video Watch Mode
-    
-    private func toggleVideoWatch() {
-        if isVideoWatching {
-            stopVideoWatch()
-        } else {
-            startVideoWatch()
-        }
-    }
-    
-    private func startVideoWatch() {
-        isVideoWatching = true
-        frameCount = 0
-        addLog("📹 Video watch started (\(Int(captureInterval))s interval)")
-
-        // Notify EC2 that watching has started
-        Task {
-            try? await APIService.shared.startVideoWatch()
-        }
-
-        // Capture first frame immediately
-        captureVideoFrame()
-
-        // Start timer for subsequent frames
-        captureTimer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
-            captureVideoFrame()
-        }
-    }
-    
-    private func stopVideoWatch() {
-        isVideoWatching = false
-        captureTimer?.invalidate()
-        captureTimer = nil
-        addLog("📹 Video watch stopped (\(frameCount) frames captured)")
-
-        // Notify EC2 that watching has stopped
-        Task {
-            try? await APIService.shared.stopVideoWatch()
-        }
-    }
-    
-    private func captureVideoFrame() {
-        Task {
-            do {
-                let capturedImage = try await CameraManager.shared.uploadVideoFrame()
-                DispatchQueue.main.async {
-                    frameCount += 1
-                    lastCapturedFrame = capturedImage
-                    addLog("📹 Frame \(frameCount) captured")
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    addLog("📹 Frame error: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-    
-    private func adjustInterval(by delta: TimeInterval) {
-        let newInterval = max(5, min(120, captureInterval + delta))
-        if newInterval != captureInterval {
-            captureInterval = newInterval
-            addLog("📹 Interval: \(Int(captureInterval))s")
-            
-            // Restart timer with new interval if watching
-            if isVideoWatching {
-                captureTimer?.invalidate()
-                captureTimer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
-                    captureVideoFrame()
-                }
             }
         }
     }
