@@ -11,6 +11,7 @@ struct VoiceView: View {
     @State private var captureInterval: TimeInterval = 30  // seconds
     @State private var captureTimer: Timer?
     @State private var frameCount = 0
+    @State private var lastCapturedFrame: UIImage?
 
     var body: some View {
         NavigationView {
@@ -153,31 +154,46 @@ struct VoiceView: View {
     }
 
     private var videoWatchControls: some View {
-        HStack(spacing: 16) {
-            // Decrease interval
-            Button(action: { adjustInterval(by: -5) }) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.orange)
+        VStack(spacing: 12) {
+            // Preview of last captured frame
+            if let lastFrame = lastCapturedFrame {
+                Image(uiImage: lastFrame)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 120)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.green, lineWidth: 2)
+                    )
             }
-            
-            Text("\(Int(captureInterval))s")
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(width: 50)
-            
-            // Increase interval
-            Button(action: { adjustInterval(by: 5) }) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.orange)
+
+            HStack(spacing: 16) {
+                // Decrease interval
+                Button(action: { adjustInterval(by: -5) }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                }
+
+                Text("\(Int(captureInterval))s")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(width: 50)
+
+                // Increase interval
+                Button(action: { adjustInterval(by: 5) }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                }
+
+                Spacer().frame(width: 20)
+
+                Text("Frames: \(frameCount)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
             }
-            
-            Spacer().frame(width: 20)
-            
-            Text("Frames: \(frameCount)")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
@@ -363,9 +379,10 @@ struct VoiceView: View {
     private func captureVideoFrame() {
         Task {
             do {
-                try await CameraManager.shared.uploadVideoFrame()
+                let capturedImage = try await CameraManager.shared.uploadVideoFrame()
                 DispatchQueue.main.async {
                     frameCount += 1
+                    lastCapturedFrame = capturedImage
                     addLog("📹 Frame \(frameCount) captured")
                 }
             } catch {

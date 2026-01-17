@@ -114,7 +114,8 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     /// Upload a video frame using the back camera (for watching TV/games)
-    func uploadVideoFrame() async throws {
+    /// Returns the captured image for preview
+    func uploadVideoFrame() async throws -> UIImage {
         // Use back camera for video watching mode
         guard let image = await capturePhoto(position: .back),
               let imageData = image.jpegData(compressionQuality: 0.7) else {
@@ -122,6 +123,7 @@ class CameraManager: NSObject, ObservableObject {
         }
 
         _ = try await APIService.shared.uploadVideoFrame(imageData: imageData)
+        return image
     }
 }
 
