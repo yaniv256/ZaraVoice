@@ -44,7 +44,7 @@ struct SettingsView: View {
                                 Text("Version")
                                     .foregroundColor(.gray)
                                 Spacer()
-                                Text("1.8")
+                                Text("1.9")
                                     .foregroundColor(.white)
                             }
                             HStack {
