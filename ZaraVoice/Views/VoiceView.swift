@@ -54,9 +54,9 @@ struct VoiceView: View {
         }
         .onAppear {
             sseClient.connect()
-            // Set up auto-send callback
-            audioManager.onAutoSend = { [self] in
-                stopAndSend()
+            // Set up chunk ready callback for continuous mode
+            audioManager.onChunkReady = { [self] audioData in
+                sendChunk(audioData)
             }
         }
         .onChange(of: sseClient.latestNotification) { _, notification in
@@ -137,7 +137,7 @@ struct VoiceView: View {
                     .fill(buttonColor)
                     .frame(width: 100, height: 100)
 
-                if audioManager.isRecording {
+                if audioManager.isListening {
                     // Stop icon
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color.white)
@@ -150,8 +150,8 @@ struct VoiceView: View {
                 }
             }
         }
-        .scaleEffect(audioManager.isSpeaking ? 1.15 : (audioManager.isRecording ? 1.05 : 1.0))
-        .animation(.easeInOut(duration: 0.2), value: audioManager.isRecording)
+        .scaleEffect(audioManager.isSpeaking ? 1.15 : (audioManager.isListening ? 1.05 : 1.0))
+        .animation(.easeInOut(duration: 0.2), value: audioManager.isListening)
         .animation(.easeInOut(duration: 0.1), value: audioManager.isSpeaking)
     }
     
@@ -216,21 +216,19 @@ struct VoiceView: View {
     }
 
     private func toggleRecording() {
-        if audioManager.isRecording {
-            stopAndSend()
+        if audioManager.isListening {
+            // Stop listening - this will send final chunk if needed
+            audioManager.stopListening()
+            addLog("Listening stopped")
         } else {
-            audioManager.startRecording()
-            addLog("Recording started...")
+            audioManager.startListening()
+            addLog("Listening started...")
         }
     }
 
-    private func stopAndSend() {
-        guard let audioData = audioManager.stopRecording() else {
-            addLog("Failed to get recording data")
-            return
-        }
-
-        addLog("Sending audio...")
+    // Called by AudioManager when auto-send triggers (continuous mode)
+    private func sendChunk(_ audioData: Data) {
+        addLog("Auto-sending chunk...")
 
         Task {
             do {
@@ -242,7 +240,6 @@ struct VoiceView: View {
                         let reason = response.filtered ?? "unknown"
                         let confStr = response.confidence.map { " [\($0)]" } ?? ""
                         self.addLog("Filtered: \(reason)\(confStr)")
-                        audioManager.status = .ready
                     }
                     return
                 }
@@ -264,16 +261,23 @@ struct VoiceView: View {
                         self.addLog("You: \(text)\(details)")
                     }
                 }
-                DispatchQueue.main.async {
-                    audioManager.status = .ready
-                }
             } catch {
                 DispatchQueue.main.async {
                     self.addLog("Error: \(error.localizedDescription)")
-                    audioManager.status = .ready
                 }
             }
         }
+    }
+
+    // Manual stop and send (for when user taps button to stop)
+    private func stopAndSend() {
+        guard let audioData = audioManager.stopRecording() else {
+            addLog("Failed to get recording data")
+            return
+        }
+
+        addLog("Sending final audio...")
+        sendChunk(audioData)
     }
 
     private func captureCamera() {
