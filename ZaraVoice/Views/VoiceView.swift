@@ -29,6 +29,14 @@ struct VoiceView: View {
 
                     // Main control button
                     mainButton
+                    
+                    // Auto-send toggle
+                    Toggle(isOn: $audioManager.autoSendEnabled) {
+                        Text("Auto-send on silence")
+                            .foregroundColor(.white)
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .purple))
+                    .padding(.horizontal, 40)
 
                     // Secondary buttons
                     secondaryButtons
@@ -46,6 +54,10 @@ struct VoiceView: View {
         }
         .onAppear {
             sseClient.connect()
+            // Set up auto-send callback
+            audioManager.onAutoSend = { [self] in
+                stopAndSend()
+            }
         }
         .onChange(of: sseClient.latestNotification) { _, notification in
             if let notification = notification {
@@ -58,21 +70,31 @@ struct VoiceView: View {
     }
 
     private var statusBadge: some View {
-        Text(audioManager.status.rawValue)
-            .font(.caption)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(statusColor)
-            .foregroundColor(.white)
-            .cornerRadius(20)
+        HStack {
+            Text(audioManager.status.rawValue)
+                .font(.caption)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(statusColor)
+                .foregroundColor(.white)
+                .cornerRadius(20)
+            
+            if audioManager.isRecording && audioManager.autoSendEnabled {
+                Text(String(format: "%.0f", audioManager.normalizedLevel))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.gray)
+            }
+        }
     }
 
     private var statusColor: Color {
         switch audioManager.status {
         case .ready: return Color(red: 0.17, green: 0.17, blue: 0.3)
         case .listening: return Color(red: 0.12, green: 0.23, blue: 0.12)
+        case .speaking: return Color(red: 0.12, green: 0.35, blue: 0.12)
+        case .silenceDetected: return Color(red: 0.23, green: 0.23, blue: 0.12)
         case .sending: return Color(red: 0.12, green: 0.12, blue: 0.23)
-        case .speaking: return Color(red: 0.23, green: 0.12, blue: 0.12)
+        case .speakingZara: return Color(red: 0.23, green: 0.12, blue: 0.12)
         case .paused: return Color(red: 0.23, green: 0.23, blue: 0.12)
         }
     }
@@ -84,7 +106,7 @@ struct VoiceView: View {
                     .fill(Color(white: 0.2))
 
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.purple)
+                    .fill(audioManager.isSpeaking ? Color.green : Color.purple)
                     .frame(width: geometry.size.width * CGFloat(audioManager.audioLevel))
             }
         }
@@ -112,7 +134,7 @@ struct VoiceView: View {
         Button(action: toggleRecording) {
             ZStack {
                 Circle()
-                    .fill(audioManager.isRecording ? Color.green : Color.purple)
+                    .fill(buttonColor)
                     .frame(width: 100, height: 100)
 
                 if audioManager.isRecording {
@@ -128,8 +150,19 @@ struct VoiceView: View {
                 }
             }
         }
-        .scaleEffect(audioManager.isRecording ? 1.1 : 1.0)
+        .scaleEffect(audioManager.isSpeaking ? 1.15 : (audioManager.isRecording ? 1.05 : 1.0))
         .animation(.easeInOut(duration: 0.2), value: audioManager.isRecording)
+        .animation(.easeInOut(duration: 0.1), value: audioManager.isSpeaking)
+    }
+    
+    private var buttonColor: Color {
+        if audioManager.isSpeaking {
+            return .green
+        } else if audioManager.isRecording {
+            return Color(red: 0.2, green: 0.5, blue: 0.2)
+        } else {
+            return .purple
+        }
     }
 
     private var secondaryButtons: some View {
@@ -230,7 +263,6 @@ struct VoiceView: View {
 
                         self.addLog("You: \(text)\(details)")
                     }
-                    // Note: Session sync handled by transcription backend, no need to push here
                 }
                 DispatchQueue.main.async {
                     audioManager.status = .ready

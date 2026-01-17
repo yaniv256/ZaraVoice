@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var sseClient = SSEClient.shared
+    @StateObject private var audioManager = AudioManager.shared
     @State private var logs: [String] = []
 
     var body: some View {
@@ -15,12 +16,83 @@ struct SettingsView: View {
                     VStack(spacing: 20) {
                         // Connection status
                         connectionStatus
+                        
+                        // Calibration section
+                        settingsSection(title: "Calibration") {
+                            if audioManager.isCalibrating {
+                                VStack(spacing: 12) {
+                                    // Progress bar
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color(white: 0.2))
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color.purple)
+                                                .frame(width: geo.size.width * CGFloat(audioManager.calibrationProgress))
+                                        }
+                                    }
+                                    .frame(height: 20)
+                                    
+                                    // Level meter during calibration
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Color(white: 0.15))
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Color.green)
+                                                .frame(width: geo.size.width * CGFloat(audioManager.normalizedLevel / 100))
+                                        }
+                                    }
+                                    .frame(height: 10)
+                                    
+                                    Text(audioManager.calibrationMessage)
+                                        .foregroundColor(.white)
+                                        .font(.caption)
+                                        .multilineTextAlignment(.center)
+                                    
+                                    if audioManager.calibrationStep == 1 {
+                                        Text("Step 1/2: Measuring ambient noise...")
+                                            .foregroundColor(.gray)
+                                            .font(.caption2)
+                                    } else if audioManager.calibrationStep == 2 {
+                                        Text("Step 2/2: Measuring speech...")
+                                            .foregroundColor(.gray)
+                                            .font(.caption2)
+                                    }
+                                    
+                                    Button(action: { audioManager.cancelCalibration() }) {
+                                        Text("Cancel")
+                                            .foregroundColor(.red)
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 8)
+                                            .background(Color.red.opacity(0.2))
+                                            .cornerRadius(8)
+                                    }
+                                }
+                            } else {
+                                Button(action: { audioManager.startCalibration() }) {
+                                    HStack {
+                                        Image(systemName: "waveform")
+                                        Text("Start Calibration")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                                }
+                                
+                                Text("Calibration measures your environment to set optimal voice detection thresholds.")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
 
                         // Audio settings
-                        settingsSection(title: "Audio Settings") {
-                            SliderRow(title: "Sensitivity", value: $settings.sensitivity, range: 1...100, format: "%.0f")
+                        settingsSection(title: "Voice Detection") {
+                            SliderRow(title: "Sensitivity", value: $settings.sensitivity, range: 5...100, format: "%.0f")
                             SliderRow(title: "Silence Duration", value: $settings.silenceDuration, range: 0.5...10, format: "%.1fs")
-                            SliderRow(title: "Silence Threshold", value: $settings.silenceThreshold, range: 1...20, format: "%.0f")
+                            SliderRow(title: "Silence Threshold", value: $settings.silenceThreshold, range: 1...50, format: "%.0f")
                             SliderRow(title: "Min Speech", value: $settings.minSpeechDuration, range: 0.1...1.0, format: "%.0fms", multiplier: 1000)
                             SliderRow(title: "Preroll Duration", value: $settings.prerollDuration, range: 0.5...5.0, format: "%.1fs")
                             SliderRow(title: "Energy Threshold", value: $settings.energyThreshold, range: 0.001...0.1, format: "%.3f")
@@ -61,6 +133,13 @@ struct SettingsView: View {
                                     .foregroundColor(sseClient.lastError != nil ? .orange : .green)
                                     .font(.system(.caption, design: .monospaced))
                             }
+                            HStack {
+                                Text("Auto-send")
+                                    .foregroundColor(.gray)
+                                Spacer()
+                                Text(audioManager.autoSendEnabled ? "Enabled" : "Disabled")
+                                    .foregroundColor(audioManager.autoSendEnabled ? .green : .orange)
+                            }
                         }
 
                         // App info
@@ -69,7 +148,7 @@ struct SettingsView: View {
                                 Text("Version")
                                     .foregroundColor(.gray)
                                 Spacer()
-                                Text("2.3")
+                                Text("2.4")
                                     .foregroundColor(.white)
                             }
                             HStack {
