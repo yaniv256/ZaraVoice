@@ -134,29 +134,54 @@ struct SessionView: View {
             return
         }
 
-        // Add auth token to request
+        // Download audio with authentication, then play from local file
         var request = URLRequest(url: url)
         if let token = UserDefaults.standard.string(forKey: "auth_token") {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        // Create AVPlayer with authenticated URL
-        // Note: AVPlayer doesn't support custom headers directly, so we use a workaround
-        // For now, we rely on the cookie-based auth or make a separate download
-        let playerItem = AVPlayerItem(url: url)
-        audioPlayer = AVPlayer(playerItem: playerItem)
+        currentlyPlayingId = message.id  // Show loading state
 
-        // Observe when playback ends
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem,
-            queue: .main
-        ) { _ in
-            self.currentlyPlayingId = nil
+        Task {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("Failed to download audio: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                    DispatchQueue.main.async { self.currentlyPlayingId = nil }
+                    return
+                }
+
+                // Save to temp file
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("mp3")
+                try data.write(to: tempURL)
+
+                // Play from local file on main thread
+                DispatchQueue.main.async {
+                    let playerItem = AVPlayerItem(url: tempURL)
+                    self.audioPlayer = AVPlayer(playerItem: playerItem)
+
+                    // Observe when playback ends
+                    NotificationCenter.default.addObserver(
+                        forName: .AVPlayerItemDidPlayToEndTime,
+                        object: playerItem,
+                        queue: .main
+                    ) { _ in
+                        self.currentlyPlayingId = nil
+                        // Clean up temp file
+                        try? FileManager.default.removeItem(at: tempURL)
+                    }
+
+                    self.audioPlayer?.play()
+                }
+            } catch {
+                print("Error downloading audio: \(error)")
+                DispatchQueue.main.async { self.currentlyPlayingId = nil }
+            }
         }
-
-        currentlyPlayingId = message.id
-        audioPlayer?.play()
     }
 }
 
