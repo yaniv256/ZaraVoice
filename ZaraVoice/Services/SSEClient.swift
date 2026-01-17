@@ -13,6 +13,14 @@ class SSEClient: ObservableObject {
     private var streamTask: Task<Void, Never>?
     private let url = URL(string: "https://agent-flow.net/zara/audio-stream")!
 
+    // Custom URLSession with longer timeout for SSE
+    private lazy var sseSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3600  // 1 hour
+        config.timeoutIntervalForResource = 3600 // 1 hour
+        return URLSession(configuration: config)
+    }()
+
     private init() {}
 
     func connect() {
@@ -48,7 +56,7 @@ class SSEClient: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            let (bytes, response) = try await sseSession.bytes(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 logger.info("[SSE] Invalid response type")
