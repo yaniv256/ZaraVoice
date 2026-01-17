@@ -469,6 +469,12 @@ class AudioManager: NSObject, ObservableObject {
     }
 
     private func playAudioData(data: Data) {
+        // Pause recording while playing to prevent echo capture
+        if isListening {
+            audioRecorder?.pause()
+            logger.debug("Paused recording for playback")
+        }
+
         do {
             audioPlayer = try AVAudioPlayer(data: data)
             audioPlayer?.delegate = self
@@ -478,6 +484,10 @@ class AudioManager: NSObject, ObservableObject {
             status = .speakingZara
         } catch {
             logger.error("Failed to play audio: \(error.localizedDescription)")
+            // Resume recording if playback failed
+            if isListening {
+                audioRecorder?.record()
+            }
         }
     }
 
@@ -555,8 +565,19 @@ extension AudioManager: AVAudioPlayerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isPlaying = false
-            self.status = self.isListening ? .listening : .ready
-            self.playQueuedAudio()
+
+            // Check if there's more audio to play
+            if !self.audioQueue.isEmpty {
+                // More chunks - play next (stay paused if recording)
+                self.playQueuedAudio()
+            } else {
+                // No more audio - resume recording if we were listening
+                if self.isListening {
+                    self.audioRecorder?.record()
+                    self.logger.debug("Resumed recording after all playback complete")
+                }
+                self.status = self.isListening ? .listening : .ready
+            }
         }
     }
 }
