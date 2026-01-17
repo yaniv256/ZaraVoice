@@ -24,9 +24,11 @@ class SSEClient: ObservableObject {
     private init() {}
 
     func connect() {
-        guard streamTask == nil else {
-            logger.info("[SSE] Already connected")
-            return
+        // Cancel any existing task before starting new one
+        if streamTask != nil {
+            logger.info("[SSE] Cancelling existing connection to reconnect")
+            streamTask?.cancel()
+            streamTask = nil
         }
 
         streamTask = Task {
