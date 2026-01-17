@@ -55,31 +55,16 @@ struct VoiceView: View {
                 }
             }
         }
-        .onDisappear {
-            stopVideoWatch()
-        }
     }
 
     private var statusBadge: some View {
-        HStack(spacing: 8) {
-            Text(audioManager.status.rawValue)
-                .font(.caption)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(statusColor)
-                .foregroundColor(.white)
-                .cornerRadius(20)
-            
-            if isVideoWatching {
-                Text("📹 \(Int(captureInterval))s")
-                    .font(.caption)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.red.opacity(0.3))
-                    .foregroundColor(.red)
-                    .cornerRadius(20)
-            }
-        }
+        Text(audioManager.status.rawValue)
+            .font(.caption)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(statusColor)
+            .foregroundColor(.white)
+            .cornerRadius(20)
     }
 
     private var statusColor: Color {
