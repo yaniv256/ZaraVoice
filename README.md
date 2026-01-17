@@ -4,13 +4,19 @@ Native iOS app for voice interaction with Zara. Provides the same functionality 
 
 ## Features
 
-- Voice recording with push-to-talk
+- **Continuous listening mode** - Mic stays open, auto-sends on silence, immediately restarts recording
+- **Audio queue** - Zara's responses queue properly, chunks play in sequence without stepping on each other
+- **Echo prevention** - Recording pauses during playback so Zara's voice isn't captured by mic
+- **Audio breakthrough** - Zara can speak during silent periods even with mic open
+- Voice recording with push-to-talk (legacy mode still works)
 - Real-time transcription via Whisper API
 - TTS responses via ElevenLabs
 - Google OAuth authentication with PKCE
 - Sign in with Apple support
 - Camera and screenshot capture
+- Video Watch mode for continuous camera capture
 - Session history viewing
+- Calibration UI for voice detection thresholds
 
 ## Repository
 
@@ -269,6 +275,13 @@ Copy app to /tmp first and chmod 755. Yaniv can't read agent-zara's home directo
 
 ## Version History
 
+- **2026-01-17**: v2.5 - Continuous listening mode matching web app behavior
+  - Mic stays open until explicitly stopped
+  - Auto-send on silence, immediately restarts recording for next utterance
+  - Audio queue buffers chunks during playback (no more stepping on each other)
+  - Audio breaks through during silence even with mic open
+  - Echo prevention: recording pauses during Zara's playback
+- **2026-01-16**: v2.4 - Silence detection and auto-send, calibration UI
 - **2026-01-12**: Initial release with Google OAuth + PKCE, voice recording, TTS playback
 
 ---
