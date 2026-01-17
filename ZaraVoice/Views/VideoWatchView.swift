@@ -13,14 +13,36 @@ struct VideoWatchView: View {
     @State private var showThumbnail = false
     @State private var cameraPosition: AVCaptureDevice.Position = .back
 
+    // Pinch-to-zoom state
+    @State private var currentZoom: CGFloat = 1.0
+    @State private var lastZoom: CGFloat = 1.0
+
     // Audio player for shutter sound
     @State private var shutterPlayer: AVAudioPlayer?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Full screen camera preview
+                // Full screen camera preview with pinch-to-zoom
                 CameraPreviewView(session: cameraManager.captureSession)
+                    .scaleEffect(currentZoom)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let newZoom = lastZoom * value
+                                currentZoom = min(max(newZoom, 1.0), 5.0)
+                            }
+                            .onEnded { value in
+                                lastZoom = currentZoom
+                            }
+                    )
+                    .onTapGesture(count: 2) {
+                        // Double-tap to reset zoom
+                        withAnimation(.spring(response: 0.3)) {
+                            currentZoom = 1.0
+                            lastZoom = 1.0
+                        }
+                    }
                     .ignoresSafeArea()
 
                 // Controls overlay
@@ -54,6 +76,16 @@ struct VideoWatchView: View {
                         }
 
                         Spacer()
+
+                        // Zoom indicator (only show when zoomed)
+                        if currentZoom > 1.01 {
+                            Text(String(format: "%.1fx", currentZoom))
+                                .font(.headline.monospacedDigit())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Color.black.opacity(0.5)))
+                        }
 
                         // Interval display
                         Text("\(Int(captureInterval))s")
