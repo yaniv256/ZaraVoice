@@ -77,7 +77,7 @@ class CameraManager: NSObject, ObservableObject {
     func capturePhoto(position: AVCaptureDevice.Position = .front) async -> UIImage? {
         // Set up camera with requested position
         setupCamera(position: position)
-        
+
         guard let photoOutput = photoOutput else {
             return nil
         }
@@ -89,6 +89,25 @@ class CameraManager: NSObject, ObservableObject {
             }
             // Wait for session to start
             try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        // Set photo orientation based on device orientation
+        if let connection = photoOutput.connection(with: .video) {
+            let deviceOrientation = await MainActor.run { UIDevice.current.orientation }
+            if connection.isVideoRotationAngleSupported(0) {
+                switch deviceOrientation {
+                case .portrait:
+                    connection.videoRotationAngle = 90
+                case .portraitUpsideDown:
+                    connection.videoRotationAngle = 270
+                case .landscapeLeft:
+                    connection.videoRotationAngle = 0
+                case .landscapeRight:
+                    connection.videoRotationAngle = 180
+                default:
+                    connection.videoRotationAngle = 90
+                }
+            }
         }
 
         return await withCheckedContinuation { continuation in

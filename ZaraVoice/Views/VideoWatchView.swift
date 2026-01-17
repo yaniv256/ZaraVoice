@@ -261,27 +261,16 @@ struct VideoWatchView: View {
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession?
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    func makeUIView(context: Context) -> PreviewView {
+        let view = PreviewView()
         view.backgroundColor = .black
-
-        if let session = session {
-            let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer.videoGravity = .resizeAspectFill
-            previewLayer.frame = view.bounds
-            view.layer.addSublayer(previewLayer)
-            context.coordinator.previewLayer = previewLayer
-        }
-
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.previewLayer?.frame = uiView.bounds
-
-        // Update session if changed
-        if let session = session, context.coordinator.previewLayer?.session !== session {
-            context.coordinator.previewLayer?.session = session
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        // Update session when it becomes available
+        if let session = session {
+            uiView.setSession(session)
         }
     }
 
@@ -290,7 +279,52 @@ struct CameraPreviewView: UIViewRepresentable {
     }
 
     class Coordinator {
-        var previewLayer: AVCaptureVideoPreviewLayer?
+    }
+
+    // Custom UIView that manages its own preview layer
+    class PreviewView: UIView {
+        private var previewLayer: AVCaptureVideoPreviewLayer?
+
+        override class var layerClass: AnyClass {
+            return AVCaptureVideoPreviewLayer.self
+        }
+
+        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+            return layer as! AVCaptureVideoPreviewLayer
+        }
+
+        func setSession(_ session: AVCaptureSession) {
+            videoPreviewLayer.session = session
+            videoPreviewLayer.videoGravity = .resizeAspectFill
+
+            // Set video orientation based on device orientation
+            updateOrientation()
+        }
+
+        func updateOrientation() {
+            guard let connection = videoPreviewLayer.connection else { return }
+
+            let orientation = UIDevice.current.orientation
+            if connection.isVideoRotationAngleSupported(0) {
+                switch orientation {
+                case .portrait:
+                    connection.videoRotationAngle = 90
+                case .portraitUpsideDown:
+                    connection.videoRotationAngle = 270
+                case .landscapeLeft:
+                    connection.videoRotationAngle = 0
+                case .landscapeRight:
+                    connection.videoRotationAngle = 180
+                default:
+                    connection.videoRotationAngle = 90
+                }
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            updateOrientation()
+        }
     }
 }
 
