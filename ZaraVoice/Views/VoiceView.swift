@@ -202,12 +202,35 @@ struct VoiceView: View {
         Task {
             do {
                 let response = try await APIService.shared.transcribe(audioData: audioData)
+
+                // Check if response was filtered (noise, hallucination, speaker mismatch)
+                if response.wasFiltered {
+                    DispatchQueue.main.async {
+                        let reason = response.filtered ?? "unknown"
+                        let confStr = response.confidence.map { " [\($0)]" } ?? ""
+                        self.addLog("Filtered: \(reason)\(confStr)")
+                        audioManager.status = .ready
+                    }
+                    return
+                }
+
+                // Get the final transcription text
                 if let text = response.text ?? response.whisperText {
                     DispatchQueue.main.async {
                         self.transcribedText = text
-                        self.addLog("You: \(text)")
+
+                        // Show confidence and speaker info if available
+                        var details = ""
+                        if let conf = response.confidence {
+                            details += " [\(conf)]"
+                        }
+                        if let sim = response.similarity {
+                            details += String(format: " [emb:%.2f]", sim)
+                        }
+
+                        self.addLog("You: \(text)\(details)")
                     }
-                    // Push to session
+                    // Push to session (injected directly by backend, but also sync here)
                     try await APIService.shared.pushToSession(role: "user", content: text)
                 }
                 DispatchQueue.main.async {

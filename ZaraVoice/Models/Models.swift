@@ -35,23 +35,41 @@ struct AudioNotification: Codable, Equatable {
 }
 
 // MARK: - Transcription Response
+// Backend returns dual transcription: medium.en + WhisperX small.en with speaker diarization
 struct TranscriptionResponse: Codable {
-    let text: String?
-    let whisperText: String?
-    let whisperDuration: Double?
-    let elevenLabsText: String?
-    let elevenLabsDuration: Double?
+    let text: String?                    // Final transcription to use
+    let rawText: String?                 // Raw transcription for "show raw" toggle
+    let whisperText: String?             // medium.en transcription (quality)
+    let elevenLabsText: String?          // WhisperX small.en with speaker tags
+    let divergence: Bool?                // True if models diverged significantly
+    let similarity: Double?              // Embedding similarity between transcriptions
+    let confidence: String?              // "high", "medium", or "noise"
+    let speakerScore: Double?            // Speaker verification score (0-1)
+    let filtered: String?                // "noise", "hallucination", "low_energy", "speaker_mismatch"
+    let audioTs: String?                 // Human-readable timestamp
+    let msgId: String?                   // Message ID for audio matching
     let status: String?
     let error: String?
 
     enum CodingKeys: String, CodingKey {
         case text
+        case rawText = "raw_text"
         case whisperText = "whisper_text"
-        case whisperDuration = "whisper_duration"
         case elevenLabsText = "elevenlabs_text"
-        case elevenLabsDuration = "elevenlabs_duration"
+        case divergence
+        case similarity
+        case confidence
+        case speakerScore = "speaker_score"
+        case filtered
+        case audioTs = "audio_ts"
+        case msgId = "msg_id"
         case status
         case error
+    }
+
+    // Check if this was filtered out (noise, hallucination, etc.)
+    var wasFiltered: Bool {
+        filtered != nil && (text?.isEmpty ?? true)
     }
 }
 
