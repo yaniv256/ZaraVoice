@@ -24,8 +24,13 @@ class SSEClient: ObservableObject {
     }
 
     private func startStreaming() async {
+        // Debug: Print all UserDefaults keys
+        let allKeys = UserDefaults.standard.dictionaryRepresentation().keys
+        print("[SSE] UserDefaults keys: \(allKeys.sorted())")
+
         guard let token = UserDefaults.standard.string(forKey: "auth_token") else {
-            print("[SSE] WARNING: No auth token found!")
+            print("[SSE] WARNING: No auth token found in UserDefaults!")
+            print("[SSE] Available keys: \(allKeys.filter { $0.contains("auth") || $0.contains("token") })")
             await MainActor.run {
                 self.lastError = "No auth token"
                 self.isConnected = false
@@ -33,7 +38,7 @@ class SSEClient: ObservableObject {
             return
         }
 
-        print("[SSE] Starting stream with auth token")
+        print("[SSE] Starting stream with auth token (length: \(token.count))")
 
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")

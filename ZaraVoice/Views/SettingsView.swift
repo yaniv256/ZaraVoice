@@ -38,13 +38,38 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
+                        // Debug section - token status
+                        settingsSection(title: "Debug") {
+                            HStack {
+                                Text("Auth Token")
+                                    .foregroundColor(.gray)
+                                Spacer()
+                                if let token = UserDefaults.standard.string(forKey: "auth_token") {
+                                    Text("\(token.prefix(20))... (\(token.count) chars)")
+                                        .foregroundColor(.green)
+                                        .font(.system(.caption, design: .monospaced))
+                                } else {
+                                    Text("NOT FOUND")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                            HStack {
+                                Text("SSE Error")
+                                    .foregroundColor(.gray)
+                                Spacer()
+                                Text(sseClient.lastError ?? "None")
+                                    .foregroundColor(sseClient.lastError != nil ? .orange : .green)
+                                    .font(.system(.caption, design: .monospaced))
+                            }
+                        }
+
                         // App info
                         settingsSection(title: "About") {
                             HStack {
                                 Text("Version")
                                     .foregroundColor(.gray)
                                 Spacer()
-                                Text("1.9")
+                                Text("2.1")
                                     .foregroundColor(.white)
                             }
                             HStack {
