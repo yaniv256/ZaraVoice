@@ -1,9 +1,14 @@
 import SwiftUI
+import AVFoundation
 
 struct SessionView: View {
     @State private var messages: [SessionMessage] = []
     @State private var isLoading = false
     @State private var inputText = ""
+    @State private var currentlyPlayingId: UUID?
+    @State private var audioPlayer: AVPlayer?
+
+    private let baseURL = "https://agent-flow.net/zara"
 
     var body: some View {
         NavigationView {
@@ -17,8 +22,12 @@ struct SessionView: View {
                         ScrollView {
                             LazyVStack(spacing: 12) {
                                 ForEach(messages) { message in
-                                    MessageBubble(message: message)
-                                        .id(message.id)
+                                    MessageBubble(
+                                        message: message,
+                                        isPlaying: currentlyPlayingId == message.id,
+                                        onPlayTap: { playAudio(for: message) }
+                                    )
+                                    .id(message.id)
                                 }
                             }
                             .padding()
@@ -108,30 +117,107 @@ struct SessionView: View {
             }
         }
     }
+
+    private func playAudio(for message: SessionMessage) {
+        // If same message is playing, stop it
+        if currentlyPlayingId == message.id {
+            audioPlayer?.pause()
+            currentlyPlayingId = nil
+            return
+        }
+
+        // Stop any current playback
+        audioPlayer?.pause()
+
+        guard let url = message.getAudioURL(baseURL: baseURL) else {
+            print("No audio URL for message")
+            return
+        }
+
+        // Add auth token to request
+        var request = URLRequest(url: url)
+        if let token = UserDefaults.standard.string(forKey: "auth_token") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        // Create AVPlayer with authenticated URL
+        // Note: AVPlayer doesn't support custom headers directly, so we use a workaround
+        // For now, we rely on the cookie-based auth or make a separate download
+        let playerItem = AVPlayerItem(url: url)
+        audioPlayer = AVPlayer(playerItem: playerItem)
+
+        // Observe when playback ends
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { _ in
+            self.currentlyPlayingId = nil
+        }
+
+        currentlyPlayingId = message.id
+        audioPlayer?.play()
+    }
 }
 
 struct MessageBubble: View {
     let message: SessionMessage
+    let isPlaying: Bool
+    let onPlayTap: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 8) {
             if message.isUser { Spacer() }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                Text(message.isUser ? "You" : "Zara")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                // Header row with role, time, and play button
+                HStack(spacing: 6) {
+                    // Play button (if has audio)
+                    if message.hasAudio {
+                        Button(action: onPlayTap) {
+                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(message.isUser ? .purple : .blue)
+                        }
+                    }
 
+                    // Role label with emoji for voice messages
+                    Text(roleLabel)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+
+                    // Time if available
+                    if let time = message.time {
+                        Text(time)
+                            .font(.caption2)
+                            .foregroundColor(.gray.opacity(0.7))
+                    }
+                }
+
+                // Message content
                 Text(message.content)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(message.isUser ? Color.purple.opacity(0.3) : Color(red: 0.12, green: 0.23, blue: 0.37))
+                    .background(bubbleColor)
                     .foregroundColor(.white)
                     .cornerRadius(20)
             }
 
             if !message.isUser { Spacer() }
         }
+    }
+
+    private var roleLabel: String {
+        if message.isUser { return "You" }
+        if message.isZaraVoice { return "🎤 Zara" }
+        return "Zara"
+    }
+
+    private var bubbleColor: Color {
+        if message.isUser {
+            return Color.purple.opacity(0.3)
+        }
+        return Color(red: 0.12, green: 0.23, blue: 0.37)
     }
 }
 

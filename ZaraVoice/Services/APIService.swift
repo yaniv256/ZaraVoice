@@ -160,7 +160,13 @@ class APIService {
         // Backend returns {"age": N, "messages": [...]}
         let wrapper = try JSONDecoder().decode(SessionHistoryResponse.self, from: data)
         return wrapper.messages.map { msg in
-            SessionMessage(role: msg.role, content: msg.content)
+            SessionMessage(
+                role: msg.role,
+                content: msg.content,
+                time: msg.time,
+                msgId: msg.msgId,
+                audioTs: msg.audioTs
+            )
         }
     }
 

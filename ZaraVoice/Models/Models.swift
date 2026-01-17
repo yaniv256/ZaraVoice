@@ -6,16 +6,59 @@ struct SessionMessage: Identifiable, Codable {
     let role: String
     let content: String
     let timestamp: Date
+    let time: String?      // Display time from server
+    let msgId: String?     // For audio playback matching
+    let audioTs: String?   // Legacy audio timestamp
 
-    init(id: UUID = UUID(), role: String, content: String, timestamp: Date = Date()) {
+    init(id: UUID = UUID(), role: String, content: String, timestamp: Date = Date(), time: String? = nil, msgId: String? = nil, audioTs: String? = nil) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
+        self.time = time
+        self.msgId = msgId
+        self.audioTs = audioTs
     }
 
     var isUser: Bool {
         role == "user"
+    }
+
+    var isZaraVoice: Bool {
+        role == "zara_voice"
+    }
+
+    /// Returns true if this message has playable audio
+    var hasAudio: Bool {
+        // Zara voice messages use msg_id
+        // User messages can use msg_id (new) or audio_ts (legacy)
+        if isZaraVoice && msgId != nil { return true }
+        if isUser && (msgId != nil || audioTs != nil) { return true }
+        return false
+    }
+
+    /// Get the audio URL for this message
+    func getAudioURL(baseURL: String) -> URL? {
+        guard hasAudio else { return nil }
+
+        if isUser {
+            // User audio
+            if let msgId = msgId {
+                return URL(string: "\(baseURL)/user-audio?m=\(msgId)")
+            }
+            if let audioTs = audioTs {
+                return URL(string: "\(baseURL)/user-audio?t=\(audioTs)")
+            }
+        } else {
+            // Zara audio (zara_voice or assistant)
+            if let msgId = msgId {
+                return URL(string: "\(baseURL)/zara-response?m=\(msgId)")
+            }
+            if let audioTs = audioTs {
+                return URL(string: "\(baseURL)/zara-response?t=\(audioTs)")
+            }
+        }
+        return nil
     }
 }
 
