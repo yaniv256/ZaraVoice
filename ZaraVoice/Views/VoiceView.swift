@@ -230,8 +230,7 @@ struct VoiceView: View {
 
                         self.addLog("You: \(text)\(details)")
                     }
-                    // Push to session (injected directly by backend, but also sync here)
-                    try await APIService.shared.pushToSession(role: "user", content: text)
+                    // Note: Session sync handled by transcription backend, no need to push here
                 }
                 DispatchQueue.main.async {
                     audioManager.status = .ready
