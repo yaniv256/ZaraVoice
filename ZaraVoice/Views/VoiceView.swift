@@ -49,7 +49,7 @@ struct VoiceView: View {
         }
         .onChange(of: sseClient.latestNotification) { _, notification in
             if let notification = notification {
-                audioManager.playLatestAudio(timestamp: notification.time)
+                audioManager.playAudio(notification: notification)
                 if let text = notification.text {
                     addLog("Zara: \(text)")
                 }

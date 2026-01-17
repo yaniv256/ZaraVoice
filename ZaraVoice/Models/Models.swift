@@ -25,12 +25,14 @@ struct AudioNotification: Codable, Equatable {
     let name: String
     let msgId: String?
     let text: String?
+    let chunk: Int?
 
     enum CodingKeys: String, CodingKey {
         case time
         case name
         case msgId = "msg_id"
         case text
+        case chunk
     }
 }
 

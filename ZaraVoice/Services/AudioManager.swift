@@ -130,9 +130,17 @@ class AudioManager: NSObject, ObservableObject {
     }
 
     // MARK: - Fetch and Play from Server
-    func playLatestAudio(timestamp: String) {
-        // Audio is served from agent-flow.net with the timestamp pattern
-        let urlString = "https://agent-flow.net/zara/audio/\(timestamp).mp3"
+    func playAudio(notification: AudioNotification) {
+        // Build URL based on msg_id (preferred) or timestamp fallback
+        let urlString: String
+        if let msgId = notification.msgId {
+            let chunk = notification.chunk ?? 0
+            urlString = "https://agent-flow.net/zara/zara-response?m=\(msgId)&c=\(chunk)"
+        } else {
+            // Fallback to timestamp pattern
+            urlString = "https://agent-flow.net/zara/zara-response?t=\(notification.time)"
+        }
+
         guard let url = URL(string: urlString) else {
             print("Invalid audio URL: \(urlString)")
             return
@@ -151,6 +159,17 @@ class AudioManager: NSObject, ObservableObject {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 if let httpResponse = response as? HTTPURLResponse {
                     print("Audio response status: \(httpResponse.statusCode), size: \(data.count)")
+                    if httpResponse.statusCode != 200 {
+                        print("Audio fetch failed with status \(httpResponse.statusCode)")
+                        return
+                    }
+                }
+                if data.count < 1000 {
+                    print("Audio data too small (\(data.count) bytes), likely an error")
+                    if let text = String(data: data, encoding: .utf8) {
+                        print("Response text: \(text)")
+                    }
+                    return
                 }
                 DispatchQueue.main.async {
                     self.playAudio(data: data)
