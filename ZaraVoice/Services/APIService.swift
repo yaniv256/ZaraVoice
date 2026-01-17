@@ -157,10 +157,10 @@ class APIService {
             throw APIError.requestFailed
         }
 
-        let history = try JSONDecoder().decode([[String: String]].self, from: data)
-        return history.compactMap { item in
-            guard let role = item["role"], let content = item["content"] else { return nil }
-            return SessionMessage(role: role, content: content)
+        // Backend returns {"age": N, "messages": [...]}
+        let wrapper = try JSONDecoder().decode(SessionHistoryResponse.self, from: data)
+        return wrapper.messages.map { msg in
+            SessionMessage(role: msg.role, content: msg.content)
         }
     }
 
@@ -248,6 +248,26 @@ enum APIError: Error {
     case requestFailed
     case invalidResponse
     case unauthorized
+}
+
+// MARK: - Session History Response
+struct SessionHistoryResponse: Codable {
+    let age: Int
+    let messages: [SessionHistoryMessage]
+}
+
+struct SessionHistoryMessage: Codable {
+    let role: String
+    let content: String
+    let time: String?
+    let audioTs: String?
+    let msgId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case role, content, time
+        case audioTs = "audio_ts"
+        case msgId = "msg_id"
+    }
 }
 
 // MARK: - Auto-logout on 401
