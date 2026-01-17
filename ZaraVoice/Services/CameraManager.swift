@@ -9,6 +9,7 @@ class CameraManager: NSObject, ObservableObject {
 
     private var captureSession: AVCaptureSession?
     private var photoOutput: AVCapturePhotoOutput?
+    private var currentCameraPosition: AVCaptureDevice.Position = .front
 
     private var photoContinuation: CheckedContinuation<UIImage?, Never>?
 
@@ -21,13 +22,19 @@ class CameraManager: NSObject, ObservableObject {
         isCameraAvailable = UIImagePickerController.isSourceTypeAvailable(.camera)
     }
 
-    func setupCamera() {
+    func setupCamera(position: AVCaptureDevice.Position = .front) {
         guard isCameraAvailable else { return }
+        
+        // If already set up with same position, skip
+        if captureSession != nil && currentCameraPosition == position {
+            return
+        }
 
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
+        currentCameraPosition = position
 
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
               let input = try? AVCaptureDeviceInput(device: camera) else {
             return
         }
@@ -42,9 +49,11 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    func capturePhoto() async -> UIImage? {
+    func capturePhoto(position: AVCaptureDevice.Position = .front) async -> UIImage? {
+        // Set up camera with requested position
+        setupCamera(position: position)
+        
         guard let photoOutput = photoOutput else {
-            // Fallback: use UIImagePickerController approach
             return nil
         }
 
@@ -92,7 +101,7 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func uploadCameraPhoto() async throws {
-        guard let image = await capturePhoto(),
+        guard let image = await capturePhoto(position: .front),
               let imageData = image.pngData() else {
             throw CameraError.captureFailed
         }
@@ -102,6 +111,17 @@ class CameraManager: NSObject, ObservableObject {
             type: "camera",
             source: "ios-app-camera"
         )
+    }
+    
+    /// Upload a video frame using the back camera (for watching TV/games)
+    func uploadVideoFrame() async throws {
+        // Use back camera for video watching mode
+        guard let image = await capturePhoto(position: .back),
+              let imageData = image.jpegData(compressionQuality: 0.7) else {
+            throw CameraError.captureFailed
+        }
+
+        _ = try await APIService.shared.uploadVideoFrame(imageData: imageData)
     }
 }
 
