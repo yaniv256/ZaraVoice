@@ -490,9 +490,11 @@ class AudioManager: NSObject, ObservableObject {
     // MARK: - Fetch and Play from Server
 
     func playAudio(notification: AudioNotification) {
-        if isListening {
+        // Only queue if user is actively speaking - not just listening
+        // This matches web app behavior: audio plays during silence even with mic open
+        if isSpeaking {
             audioQueue.append(notification)
-            logger.info("Audio queued during listening, queue size: \(self.audioQueue.count)")
+            logger.info("Audio queued during speech, queue size: \(self.audioQueue.count)")
         } else {
             playAudioImmediately(notification: notification)
         }
