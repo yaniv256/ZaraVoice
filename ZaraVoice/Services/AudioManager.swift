@@ -310,7 +310,7 @@ class AudioManager: NSObject, ObservableObject {
 
     private func playQueuedAudio() {
         guard !audioQueue.isEmpty else { return }
-        guard !isListening else { return }  // Don't play if still listening
+        guard !isSpeaking else { return }  // Don't play if user is speaking, but OK during silent listening
 
         let notification = audioQueue.removeFirst()
         logger.info("Playing queued audio, \(self.audioQueue.count) remaining")
