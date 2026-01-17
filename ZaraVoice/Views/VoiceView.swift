@@ -30,14 +30,6 @@ struct VoiceView: View {
                     // Main control button
                     mainButton
                     
-                    // Auto-send toggle
-                    Toggle(isOn: $audioManager.autoSendEnabled) {
-                        Text("Auto-send on silence")
-                            .foregroundColor(.white)
-                    }
-                    .toggleStyle(SwitchToggleStyle(tint: .purple))
-                    .padding(.horizontal, 40)
-
                     // Secondary buttons
                     secondaryButtons
                 }
@@ -167,41 +159,6 @@ struct VoiceView: View {
 
     private var secondaryButtons: some View {
         VStack(spacing: 12) {
-            HStack(spacing: 20) {
-                // Camera button
-                Button(action: captureCamera) {
-                    Label("Camera", systemImage: "camera.fill")
-                        .font(.caption)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.cyan.opacity(0.3))
-                        .foregroundColor(.cyan)
-                        .cornerRadius(8)
-                }
-
-                // Screenshot button
-                Button(action: captureScreen) {
-                    Label("Screenshot", systemImage: "camera.viewfinder")
-                        .font(.caption)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.orange.opacity(0.3))
-                        .foregroundColor(.orange)
-                        .cornerRadius(8)
-                }
-
-                // Debug button
-                Button(action: sendDebug) {
-                    Label("Debug", systemImage: "ladybug.fill")
-                        .font(.caption)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.yellow.opacity(0.3))
-                        .foregroundColor(.yellow)
-                        .cornerRadius(8)
-                }
-            }
-            
             // Video Watch button - opens full screen camera
             Button(action: { showingVideoWatch = true }) {
                 Label("Video Watch", systemImage: "video.fill")
@@ -214,7 +171,6 @@ struct VoiceView: View {
             }
         }
     }
-
     private func toggleRecording() {
         if audioManager.isListening {
             // Stop listening - this will send final chunk if needed
@@ -280,51 +236,6 @@ struct VoiceView: View {
         sendChunk(audioData)
     }
 
-    private func captureCamera() {
-        Task {
-            do {
-                try await CameraManager.shared.uploadCameraPhoto()
-                addLog("Camera photo shared!")
-            } catch {
-                addLog("Camera error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func captureScreen() {
-        Task {
-            do {
-                try await CameraManager.shared.uploadScreenshot()
-                addLog("Screenshot shared!")
-            } catch {
-                addLog("Screenshot error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func sendDebug() {
-        Task {
-            do {
-                guard let screenshot = CameraManager.shared.takeScreenshot(),
-                      let imageData = screenshot.pngData() else {
-                    addLog("Failed to capture debug screenshot")
-                    return
-                }
-
-                _ = try await APIService.shared.uploadDebugScreenshot(
-                    imageData: imageData,
-                    logs: logs,
-                    elements: []
-                )
-                addLog("Debug info sent!")
-            } catch {
-                addLog("Debug error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func addLog(_ message: String) {
-        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logs.insert("\(timestamp): \(message)", at: 0)
         if logs.count > 50 {
             logs.removeLast()
