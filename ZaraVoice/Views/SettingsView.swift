@@ -44,7 +44,7 @@ struct SettingsView: View {
                                 Text("Version")
                                     .foregroundColor(.gray)
                                 Spacer()
-                                Text("1.4")
+                                Text("1.5")
                                     .foregroundColor(.white)
                             }
                             HStack {
@@ -149,16 +149,13 @@ struct SettingsView: View {
     }
 
     private func logout() {
-        // Clear auth token
-        UserDefaults.standard.removeObject(forKey: "auth_token")
-        UserDefaults.standard.removeObject(forKey: "user_email")
-        addLog("Logged out")
+        addLog("Logging out...")
 
         // Disconnect SSE
         sseClient.disconnect()
 
-        // Force app to show login screen by posting notification
-        NotificationCenter.default.post(name: NSNotification.Name("UserDidLogout"), object: nil)
+        // Use AuthManager to properly sign out (clears tokens and updates isAuthenticated)
+        AuthManager.shared.signOut()
     }
 }
 
