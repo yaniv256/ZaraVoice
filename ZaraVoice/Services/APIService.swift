@@ -39,15 +39,10 @@ class APIService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.requestFailed
-        }
-        
-        if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-        
-        guard httpResponse.statusCode == 200 else {
+        // Auto-logout on 401
+        try checkUnauthorized(response)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
         }
 
@@ -89,6 +84,9 @@ class APIService {
         request.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
@@ -134,6 +132,9 @@ class APIService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
+        // Auto-logout on 401
+        try checkUnauthorized(response)
+
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
         }
@@ -146,8 +147,11 @@ class APIService {
         let url = URL(string: "\(baseURL)/session-history")!
         var request = URLRequest(url: url)
         addAuthHeader(to: &request)
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
@@ -172,6 +176,9 @@ class APIService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await URLSession.shared.data(for: request)
+
+        // Auto-logout on 401
+        try checkUnauthorized(response)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw APIError.requestFailed
@@ -241,4 +248,21 @@ enum APIError: Error {
     case requestFailed
     case invalidResponse
     case unauthorized
+}
+
+// MARK: - Auto-logout on 401
+extension APIService {
+    /// Check response for 401 and trigger auto-logout if unauthorized
+    func checkUnauthorized(_ response: URLResponse) throws {
+        guard let httpResponse = response as? HTTPURLResponse else { return }
+        if httpResponse.statusCode == 401 {
+            // Clear tokens and trigger logout on main thread
+            DispatchQueue.main.async {
+                UserDefaults.standard.removeObject(forKey: "auth_token")
+                UserDefaults.standard.removeObject(forKey: "user_email")
+                NotificationCenter.default.post(name: NSNotification.Name("UserDidLogout"), object: nil)
+            }
+            throw APIError.unauthorized
+        }
+    }
 }

@@ -55,6 +55,31 @@ struct SettingsView: View {
                                     .foregroundColor(.white)
                             }
                         }
+
+                        // Account section
+                        settingsSection(title: "Account") {
+                            if let email = UserDefaults.standard.string(forKey: "user_email") {
+                                HStack {
+                                    Text("Logged in as")
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    Text(email)
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                            }
+
+                            Button(action: logout) {
+                                HStack {
+                                    Spacer()
+                                    Text("Logout")
+                                        .foregroundColor(.red)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 8)
+                            }
+                        }
                     }
                     .padding()
                 }
@@ -121,6 +146,19 @@ struct SettingsView: View {
     private func addLog(_ message: String) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logs.insert("\(timestamp): \(message)", at: 0)
+    }
+
+    private func logout() {
+        // Clear auth token
+        UserDefaults.standard.removeObject(forKey: "auth_token")
+        UserDefaults.standard.removeObject(forKey: "user_email")
+        addLog("Logged out")
+
+        // Disconnect SSE
+        sseClient.disconnect()
+
+        // Force app to show login screen by posting notification
+        NotificationCenter.default.post(name: NSNotification.Name("UserDidLogout"), object: nil)
     }
 }
 
