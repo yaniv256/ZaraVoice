@@ -18,6 +18,11 @@ class SSEClient: ObservableObject {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = TimeInterval(Int.max)
 
+        // Add auth token
+        if let token = UserDefaults.standard.string(forKey: "auth_token") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
         let session = URLSession(configuration: .default, delegate: SSEDelegate(client: self), delegateQueue: nil)
         task = session.dataTask(with: request)
         task?.resume()

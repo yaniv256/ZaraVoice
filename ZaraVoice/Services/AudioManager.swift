@@ -131,12 +131,27 @@ class AudioManager: NSObject, ObservableObject {
 
     // MARK: - Fetch and Play from Server
     func playLatestAudio(timestamp: String) {
-        let urlString = "https://seethegalaxy.com/audio/voice-generated/\(timestamp).mp3"
-        guard let url = URL(string: urlString) else { return }
+        // Audio is served from agent-flow.net with the timestamp pattern
+        let urlString = "https://agent-flow.net/zara/audio/\(timestamp).mp3"
+        guard let url = URL(string: urlString) else {
+            print("Invalid audio URL: \(urlString)")
+            return
+        }
+
+        print("Fetching audio from: \(urlString)")
+
+        // Create request with auth header
+        var request = URLRequest(url: url)
+        if let token = UserDefaults.standard.string(forKey: "auth_token") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("Audio response status: \(httpResponse.statusCode), size: \(data.count)")
+                }
                 DispatchQueue.main.async {
                     self.playAudio(data: data)
                 }
