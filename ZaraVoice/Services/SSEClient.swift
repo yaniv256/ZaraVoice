@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "net.agentflow.ZaraVoice", category: "SSE")
 
 class SSEClient: ObservableObject {
     static let shared = SSEClient()
@@ -14,7 +17,7 @@ class SSEClient: ObservableObject {
 
     func connect() {
         guard streamTask == nil else {
-            print("[SSE] Already connected")
+            logger.info("[SSE] Already connected")
             return
         }
 
@@ -26,11 +29,11 @@ class SSEClient: ObservableObject {
     private func startStreaming() async {
         // Debug: Print all UserDefaults keys
         let allKeys = UserDefaults.standard.dictionaryRepresentation().keys
-        print("[SSE] UserDefaults keys: \(allKeys.sorted())")
+        logger.info("[SSE] UserDefaults keys: \(allKeys.sorted())")
 
         guard let token = UserDefaults.standard.string(forKey: "auth_token") else {
-            print("[SSE] WARNING: No auth token found in UserDefaults!")
-            print("[SSE] Available keys: \(allKeys.filter { $0.contains("auth") || $0.contains("token") })")
+            logger.info("[SSE] WARNING: No auth token found in UserDefaults!")
+            logger.info("[SSE] Available keys: \(allKeys.filter { $0.contains("auth") || $0.contains("token") })")
             await MainActor.run {
                 self.lastError = "No auth token"
                 self.isConnected = false
@@ -38,7 +41,7 @@ class SSEClient: ObservableObject {
             return
         }
 
-        print("[SSE] Starting stream with auth token (length: \(token.count))")
+        logger.info("[SSE] Starting stream with auth token (length: \(token.count))")
 
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -48,15 +51,15 @@ class SSEClient: ObservableObject {
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("[SSE] Invalid response type")
+                logger.info("[SSE] Invalid response type")
                 await reconnect()
                 return
             }
 
-            print("[SSE] Response status: \(httpResponse.statusCode)")
+            logger.info("[SSE] Response status: \(httpResponse.statusCode)")
 
             if httpResponse.statusCode == 401 {
-                print("[SSE] Unauthorized - signing out")
+                logger.info("[SSE] Unauthorized - signing out")
                 await MainActor.run {
                     AuthManager.shared.signOut()
                 }
@@ -64,7 +67,7 @@ class SSEClient: ObservableObject {
             }
 
             guard httpResponse.statusCode == 200 else {
-                print("[SSE] Bad status: \(httpResponse.statusCode)")
+                logger.info("[SSE] Bad status: \(httpResponse.statusCode)")
                 await MainActor.run {
                     self.lastError = "HTTP \(httpResponse.statusCode)"
                     self.isConnected = false
@@ -78,19 +81,28 @@ class SSEClient: ObservableObject {
                 self.lastError = nil
             }
 
-            print("[SSE] Connected! Reading lines...")
+            logger.info("[SSE] Connected! Reading lines...")
+
+            // Track connection start time for debugging
+            let startTime = Date()
 
             // Read lines as they arrive
             for try await line in bytes.lines {
-                if Task.isCancelled { break }
+                if Task.isCancelled {
+                    logger.info("[SSE] Task cancelled, breaking loop")
+                    break
+                }
+
+                let elapsed = Date().timeIntervalSince(startTime)
+                logger.info("[SSE] Line received at +\(String(format: "%.1f", elapsed))s: \(line.prefix(50))")
 
                 if line.hasPrefix("data: ") {
                     let jsonString = String(line.dropFirst(6))
-                    print("[SSE] Received: \(jsonString.prefix(80))...")
+                    logger.info("[SSE] Data payload: \(jsonString.prefix(80))...")
 
                     if let jsonData = jsonString.data(using: .utf8),
                        let notification = try? JSONDecoder().decode(AudioNotification.self, from: jsonData) {
-                        print("[SSE] Parsed notification: msg_id=\(notification.msgId ?? "nil")")
+                        logger.info("[SSE] Parsed notification: msg_id=\(notification.msgId ?? "nil")")
                         await MainActor.run {
                             self.latestNotification = notification
                         }
@@ -98,7 +110,8 @@ class SSEClient: ObservableObject {
                 }
             }
 
-            print("[SSE] Stream ended normally")
+            let totalTime = Date().timeIntervalSince(startTime)
+            logger.info("[SSE] Stream ended normally after \(String(format: "%.1f", totalTime))s")
             await MainActor.run {
                 self.isConnected = false
             }
@@ -106,10 +119,10 @@ class SSEClient: ObservableObject {
 
         } catch {
             if Task.isCancelled {
-                print("[SSE] Task cancelled")
+                logger.info("[SSE] Task cancelled")
                 return
             }
-            print("[SSE] Error: \(error.localizedDescription)")
+            logger.info("[SSE] Error: \(error.localizedDescription)")
             await MainActor.run {
                 self.isConnected = false
                 self.lastError = error.localizedDescription
@@ -122,7 +135,7 @@ class SSEClient: ObservableObject {
         streamTask = nil
         try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
         if !Task.isCancelled {
-            print("[SSE] Reconnecting...")
+            logger.info("[SSE] Reconnecting...")
             streamTask = Task {
                 await startStreaming()
             }
@@ -130,7 +143,7 @@ class SSEClient: ObservableObject {
     }
 
     func disconnect() {
-        print("[SSE] Disconnecting")
+        logger.info("[SSE] Disconnecting")
         streamTask?.cancel()
         streamTask = nil
         DispatchQueue.main.async {
