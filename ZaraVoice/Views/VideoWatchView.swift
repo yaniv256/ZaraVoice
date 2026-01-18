@@ -13,13 +13,18 @@ struct VideoWatchView: View {
     @State private var showThumbnail = false
     @State private var cameraPosition: AVCaptureDevice.Position = .back
 
+    // Pinch-to-zoom state
     @State private var currentZoom: CGFloat = 1.0
     @State private var lastZoom: CGFloat = 1.0
+
+    // Audio player for shutter sound
+    @State private var shutterPlayer: AVAudioPlayer?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                CameraPreviewView(session: cameraManager.captureSession, photoOutput: cameraManager.photoOutput)
+                // Full screen camera preview with pinch-to-zoom
+                CameraPreviewView(session: cameraManager.captureSession)
                     .scaleEffect(currentZoom)
                     .gesture(
                         MagnificationGesture()
@@ -32,6 +37,7 @@ struct VideoWatchView: View {
                             }
                     )
                     .onTapGesture(count: 2) {
+                        // Double-tap to reset zoom
                         withAnimation(.spring(response: 0.3)) {
                             currentZoom = 1.0
                             lastZoom = 1.0
@@ -39,8 +45,11 @@ struct VideoWatchView: View {
                     }
                     .ignoresSafeArea()
 
+                // Controls overlay
                 VStack {
+                    // Top bar
                     HStack {
+                        // Close button
                         Button(action: { stopAndDismiss() }) {
                             Image(systemName: "xmark")
                                 .font(.title2.weight(.semibold))
@@ -51,6 +60,7 @@ struct VideoWatchView: View {
 
                         Spacer()
 
+                        // Recording indicator and frame count
                         if isCapturing {
                             HStack(spacing: 8) {
                                 Circle()
@@ -67,6 +77,7 @@ struct VideoWatchView: View {
 
                         Spacer()
 
+                        // Zoom indicator (only show when zoomed)
                         if currentZoom > 1.01 {
                             Text(String(format: "%.1fx", currentZoom))
                                 .font(.headline.monospacedDigit())
@@ -76,6 +87,7 @@ struct VideoWatchView: View {
                                 .background(Capsule().fill(Color.black.opacity(0.5)))
                         }
 
+                        // Interval display
                         Text("\(Int(captureInterval))s")
                             .font(.headline.monospacedDigit())
                             .foregroundColor(.white)
@@ -83,6 +95,7 @@ struct VideoWatchView: View {
                             .padding(.vertical, 8)
                             .background(Capsule().fill(Color.black.opacity(0.5)))
 
+                        // Camera flip button
                         Button(action: flipCamera) {
                             Image(systemName: "camera.rotate")
                                 .font(.title2.weight(.semibold))
@@ -95,7 +108,9 @@ struct VideoWatchView: View {
 
                     Spacer()
 
+                    // Bottom controls - camera app style
                     HStack(alignment: .center, spacing: 60) {
+                        // Thumbnail of last capture (left side, like camera app)
                         if let lastFrame = lastCapturedFrame {
                             Image(uiImage: lastFrame)
                                 .resizable()
@@ -110,11 +125,13 @@ struct VideoWatchView: View {
                                 .opacity(showThumbnail ? 1.0 : 0.0)
                                 .animation(.spring(response: 0.3), value: showThumbnail)
                         } else {
+                            // Placeholder for alignment
                             Rectangle()
                                 .fill(Color.clear)
                                 .frame(width: 60, height: 60)
                         }
 
+                        // Main capture/stop button (center)
                         Button(action: toggleCapture) {
                             ZStack {
                                 Circle()
@@ -122,10 +139,12 @@ struct VideoWatchView: View {
                                     .frame(width: 75, height: 75)
 
                                 if isCapturing {
+                                    // Stop square when recording
                                     RoundedRectangle(cornerRadius: 4)
                                         .fill(Color.red)
                                         .frame(width: 30, height: 30)
                                 } else {
+                                    // Record circle when stopped
                                     Circle()
                                         .fill(Color.red)
                                         .frame(width: 60, height: 60)
@@ -133,6 +152,7 @@ struct VideoWatchView: View {
                             }
                         }
 
+                        // Interval adjustment (right side)
                         VStack(spacing: 8) {
                             Button(action: { adjustInterval(by: 5) }) {
                                 Image(systemName: "plus")
@@ -160,12 +180,26 @@ struct VideoWatchView: View {
         }
         .onAppear {
             cameraManager.startSession(position: cameraPosition)
+            setupShutterSound()
         }
         .onDisappear {
             stopCapturing()
             cameraManager.stopSession()
         }
         .statusBarHidden(true)
+    }
+
+    private func setupShutterSound() {
+        // Try to use system shutter sound
+        if let soundURL = Bundle.main.url(forResource: "shutter", withExtension: "mp3") {
+            shutterPlayer = try? AVAudioPlayer(contentsOf: soundURL)
+            shutterPlayer?.prepareToPlay()
+        }
+    }
+
+    private func playShutterSound() {
+        // Play system sound as fallback (camera shutter)
+        AudioServicesPlaySystemSound(1108)
     }
 
     private func toggleCapture() {
@@ -181,12 +215,15 @@ struct VideoWatchView: View {
         frameCount = 0
         showThumbnail = false
 
+        // Notify EC2
         Task {
             try? await APIService.shared.startVideoWatch()
         }
 
+        // Capture first frame immediately
         captureFrame()
 
+        // Start timer
         captureTimer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
             captureFrame()
         }
@@ -197,12 +234,16 @@ struct VideoWatchView: View {
         captureTimer?.invalidate()
         captureTimer = nil
 
+        // Notify EC2
         Task {
             try? await APIService.shared.stopVideoWatch()
         }
     }
 
     private func captureFrame() {
+        // Shutter sound disabled - interrupts audio playback
+        // playShutterSound()
+
         Task {
             do {
                 let image = try await CameraManager.shared.uploadVideoFrame()
@@ -210,6 +251,7 @@ struct VideoWatchView: View {
                     frameCount += 1
                     lastCapturedFrame = image
 
+                    // Animate thumbnail appearance
                     withAnimation {
                         showThumbnail = true
                     }
@@ -225,6 +267,7 @@ struct VideoWatchView: View {
         if newInterval != captureInterval {
             captureInterval = newInterval
 
+            // Restart timer with new interval if capturing
             if isCapturing {
                 captureTimer?.invalidate()
                 captureTimer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
@@ -246,9 +289,9 @@ struct VideoWatchView: View {
     }
 }
 
+// UIViewRepresentable wrapper for AVCaptureVideoPreviewLayer
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession?
-    let photoOutput: AVCapturePhotoOutput?
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -257,22 +300,23 @@ struct CameraPreviewView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
+        // Update session when it becomes available
         if let session = session {
-            uiView.setSession(session, photoOutput: photoOutput)
+            uiView.setSession(session)
         }
     }
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+    }
+
+    // Custom UIView that manages its own preview layer
     class PreviewView: UIView {
-        private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
-        private var previewObservation: NSKeyValueObservation?
-        private var captureObservation: NSKeyValueObservation?
-        private weak var photoOutput: AVCapturePhotoOutput?
-        
-        // Pending rotation to apply after session stabilizes
-        private var pendingPreviewRotation: CGFloat?
-        private var pendingCaptureRotation: CGFloat?
-        private var isInitialized = false
-        
+        private var previewLayer: AVCaptureVideoPreviewLayer?
+
         override class var layerClass: AnyClass {
             return AVCaptureVideoPreviewLayer.self
         }
@@ -281,94 +325,19 @@ struct CameraPreviewView: UIViewRepresentable {
             return layer as! AVCaptureVideoPreviewLayer
         }
 
-        func setSession(_ session: AVCaptureSession, photoOutput: AVCapturePhotoOutput?) {
+        func setSession(_ session: AVCaptureSession) {
+            // Only set session if it's different to avoid unnecessary updates
             guard videoPreviewLayer.session !== session else { return }
 
-            // Clear any pending rotation
-            isInitialized = false
-            
             videoPreviewLayer.session = session
             videoPreviewLayer.videoGravity = .resizeAspectFill
-            self.photoOutput = photoOutput
-            
-            if let device = session.inputs
-                .compactMap({ $0 as? AVCaptureDeviceInput })
-                .first(where: { $0.device.hasMediaType(.video) })?
-                .device {
-                setupRotationCoordinator(for: device)
-            }
-            
-            // Delay initial rotation to let session stabilize
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.isInitialized = true
-                self?.applyPendingRotations()
-            }
-        }
-        
-        private func setupRotationCoordinator(for device: AVCaptureDevice) {
-            rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: videoPreviewLayer)
-            
-            guard let coordinator = rotationCoordinator else { return }
-            
-            // Store initial rotations as pending
-            pendingPreviewRotation = coordinator.videoRotationAngleForHorizonLevelPreview
-            pendingCaptureRotation = coordinator.videoRotationAngleForHorizonLevelCapture
-            
-            // Observe preview rotation changes - only apply when initialized
-            previewObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coord, _ in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    if self.isInitialized {
-                        self.applyPreviewRotation(coord.videoRotationAngleForHorizonLevelPreview)
-                    } else {
-                        self.pendingPreviewRotation = coord.videoRotationAngleForHorizonLevelPreview
-                    }
-                }
-            }
-            
-            // Observe capture rotation changes - only apply when initialized
-            captureObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self] coord, _ in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    if self.isInitialized {
-                        self.applyCaptureRotation(coord.videoRotationAngleForHorizonLevelCapture)
-                    } else {
-                        self.pendingCaptureRotation = coord.videoRotationAngleForHorizonLevelCapture
-                    }
-                }
-            }
-        }
-        
-        private func applyPendingRotations() {
-            if let previewRotation = pendingPreviewRotation {
-                applyPreviewRotation(previewRotation)
-                pendingPreviewRotation = nil
-            }
-            if let captureRotation = pendingCaptureRotation {
-                applyCaptureRotation(captureRotation)
-                pendingCaptureRotation = nil
-            }
-        }
-        
-        private func applyPreviewRotation(_ angle: CGFloat) {
-            guard let previewConnection = videoPreviewLayer.connection,
-                  previewConnection.isVideoRotationAngleSupported(angle) else { return }
-            previewConnection.videoRotationAngle = angle
-        }
-        
-        private func applyCaptureRotation(_ angle: CGFloat) {
-            guard let photoConnection = photoOutput?.connection(with: .video),
-                  photoConnection.isVideoRotationAngleSupported(angle) else { return }
-            photoConnection.videoRotationAngle = angle
+            // Do NOT set videoRotationAngle here or anywhere - causes error -12784
+            // iOS handles preview orientation automatically via the preview layer
         }
 
         override func layoutSubviews() {
             super.layoutSubviews()
-        }
-        
-        deinit {
-            previewObservation?.invalidate()
-            captureObservation?.invalidate()
+            // Do NOT update orientation here - causes error -12784 during capture
         }
     }
 }

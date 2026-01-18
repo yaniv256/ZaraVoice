@@ -9,8 +9,7 @@ class CameraManager: NSObject, ObservableObject {
     @Published var isSessionRunning = false
 
     private(set) var captureSession: AVCaptureSession?
-    // Expose photoOutput so VideoWatchView can set rotation on its connection
-    private(set) var photoOutput: AVCapturePhotoOutput?
+    private var photoOutput: AVCapturePhotoOutput?
     private var currentCameraPosition: AVCaptureDevice.Position = .front
 
     private var photoContinuation: CheckedContinuation<UIImage?, Never>?
@@ -27,10 +26,12 @@ class CameraManager: NSObject, ObservableObject {
     func setupCamera(position: AVCaptureDevice.Position = .front, forceReset: Bool = false) {
         guard isCameraAvailable else { return }
 
+        // If already set up with same position and not forcing reset, skip
         if captureSession != nil && currentCameraPosition == position && !forceReset {
             return
         }
 
+        // Clear existing session
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
         currentCameraPosition = position
@@ -51,6 +52,7 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func startSession(position: AVCaptureDevice.Position = .back) {
+        // Force reset if position changed
         let needsReset = currentCameraPosition != position
         setupCamera(position: position, forceReset: needsReset)
         guard let session = captureSession, !session.isRunning else { return }
@@ -73,6 +75,7 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func capturePhoto(position: AVCaptureDevice.Position = .front) async -> UIImage? {
+        // Set up camera with requested position
         setupCamera(position: position)
 
         guard let photoOutput = photoOutput else {
@@ -80,14 +83,19 @@ class CameraManager: NSObject, ObservableObject {
             return nil
         }
 
+        // Start session if needed
         if captureSession?.isRunning == false {
             DispatchQueue.global(qos: .userInitiated).async {
                 self.captureSession?.startRunning()
             }
+            // Wait for session to start
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        // Do NOT set videoRotationAngle here - it's set by RotationCoordinator in VideoWatchView
+        // NOTE: Do NOT set videoRotationAngle at capture time!
+        // Error -12784 occurs when setting orientation during capture.
+        // The photo will be captured in the current sensor orientation.
+        // iOS handles EXIF orientation automatically.
 
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
@@ -137,7 +145,10 @@ class CameraManager: NSObject, ObservableObject {
         )
     }
 
+    /// Upload a video frame using the back camera (for watching TV/games)
+    /// Returns the captured image for preview
     func uploadVideoFrame() async throws -> UIImage {
+        // Use back camera for video watching mode
         guard let image = await capturePhoto(position: .back),
               let imageData = image.jpegData(compressionQuality: 0.7) else {
             throw CameraError.captureFailed
@@ -152,23 +163,17 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             print("[CameraManager] Photo capture error: \(error)")
-            photoContinuation?.resume(returning: nil)
-            photoContinuation = nil
-            return
         }
 
-        // The rotation is already set on the connection by RotationCoordinator,
-        // so fileDataRepresentation includes correct orientation
         guard let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data) else {
-            print("[CameraManager] Failed to get image data")
+            print("[CameraManager] Failed to get image data from photo")
             photoContinuation?.resume(returning: nil)
             photoContinuation = nil
             return
         }
 
-        print("[CameraManager] Photo captured - size: \(image.size), orientation: \(image.imageOrientation.rawValue)")
-
+        print("[CameraManager] Photo captured successfully")
         DispatchQueue.main.async {
             self.capturedImage = image
         }
