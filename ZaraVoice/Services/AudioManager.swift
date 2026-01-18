@@ -42,6 +42,10 @@ class AudioManager: NSObject, ObservableObject {
     // Audio queue - holds notifications that arrive during recording
     private var audioQueue: [AudioNotification] = []
 
+    // Voice event tracking
+    private var currentMsgId: String?
+    private var currentChunkIndex: Int = 0
+
     // Silence detection
     private var silenceStart: Date?
     private var speechStart: Date?
@@ -482,6 +486,13 @@ class AudioManager: NSObject, ObservableObject {
 
             isPlaying = true
             status = .speakingZara
+
+            // Report "started" - audio is now playing
+            if let msgId = currentMsgId {
+                Task {
+                    await APIService.shared.reportVoiceEvent(msgId: msgId, chunkIndex: currentChunkIndex, event: "started")
+                }
+            }
         } catch {
             logger.error("Failed to play audio: \(error.localizedDescription)")
             // Resume recording if playback failed
@@ -513,10 +524,19 @@ class AudioManager: NSObject, ObservableObject {
     }
 
     private func playAudioImmediately(notification: AudioNotification) {
+        // Track current playback for event reporting
+        currentMsgId = notification.msgId
+        currentChunkIndex = notification.chunk ?? 0
+
         let urlString: String
         if let msgId = notification.msgId {
             let chunk = notification.chunk ?? 0
             urlString = "https://agent-flow.net/zara/zara-response?m=\(msgId)&c=\(chunk)"
+
+            // Report "delivered" - we received the notification
+            Task {
+                await APIService.shared.reportVoiceEvent(msgId: msgId, chunkIndex: chunk, event: "delivered")
+            }
         } else {
             urlString = "https://agent-flow.net/zara/zara-response?t=\(notification.time)"
         }
@@ -562,6 +582,14 @@ class AudioManager: NSObject, ObservableObject {
 
 extension AudioManager: AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        // Report "finished" before resetting state
+        if let msgId = currentMsgId {
+            let chunk = currentChunkIndex
+            Task {
+                await APIService.shared.reportVoiceEvent(msgId: msgId, chunkIndex: chunk, event: "finished")
+            }
+        }
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isPlaying = false

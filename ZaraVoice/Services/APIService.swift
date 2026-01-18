@@ -287,6 +287,34 @@ struct SessionHistoryMessage: Codable {
     }
 }
 
+// MARK: - Voice Event Tracking
+extension APIService {
+    /// Report voice playback event for multi-client tracking
+    /// Events: delivered, started, finished
+    func reportVoiceEvent(msgId: String, chunkIndex: Int, event: String) async {
+        guard let url = URL(string: "\(baseURL)/voice-event") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // No auth needed - endpoint bypasses OAuth
+
+        let body: [String: Any] = [
+            "client_id": "ios-app",
+            "msg_id": msgId,
+            "chunk_index": chunkIndex,
+            "event": event
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let _ = try await URLSession.shared.data(for: request)
+        } catch {
+            // Silently ignore errors - tracking is best-effort
+        }
+    }
+}
+
 // MARK: - Auto-logout on 401
 extension APIService {
     /// Check response for 401 and trigger auto-logout if unauthorized
