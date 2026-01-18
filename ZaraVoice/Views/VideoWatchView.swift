@@ -241,8 +241,8 @@ struct VideoWatchView: View {
     }
 
     private func captureFrame() {
-        // Play shutter sound
-        playShutterSound()
+        // Shutter sound disabled - interrupts audio playback
+        // playShutterSound()
 
         Task {
             do {
