@@ -79,6 +79,7 @@ class CameraManager: NSObject, ObservableObject {
         setupCamera(position: position)
 
         guard let photoOutput = photoOutput else {
+            print("[CameraManager] photoOutput is nil")
             return nil
         }
 
@@ -91,28 +92,15 @@ class CameraManager: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        // Set photo orientation based on device orientation
-        if let connection = photoOutput.connection(with: .video) {
-            let deviceOrientation = await MainActor.run { UIDevice.current.orientation }
-            if connection.isVideoRotationAngleSupported(0) {
-                switch deviceOrientation {
-                case .portrait:
-                    connection.videoRotationAngle = 90
-                case .portraitUpsideDown:
-                    connection.videoRotationAngle = 270
-                case .landscapeLeft:
-                    connection.videoRotationAngle = 0
-                case .landscapeRight:
-                    connection.videoRotationAngle = 180
-                default:
-                    connection.videoRotationAngle = 90
-                }
-            }
-        }
+        // NOTE: Do NOT set videoRotationAngle at capture time!
+        // Error -12784 occurs when setting orientation during capture.
+        // The photo will be captured in the current sensor orientation.
+        // iOS handles EXIF orientation automatically.
 
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
             let settings = AVCapturePhotoSettings()
+            print("[CameraManager] Capturing photo...")
             photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
@@ -156,7 +144,7 @@ class CameraManager: NSObject, ObservableObject {
             source: "ios-app-camera"
         )
     }
-    
+
     /// Upload a video frame using the back camera (for watching TV/games)
     /// Returns the captured image for preview
     func uploadVideoFrame() async throws -> UIImage {
@@ -173,13 +161,19 @@ class CameraManager: NSObject, ObservableObject {
 
 extension CameraManager: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            print("[CameraManager] Photo capture error: \(error)")
+        }
+
         guard let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data) else {
+            print("[CameraManager] Failed to get image data from photo")
             photoContinuation?.resume(returning: nil)
             photoContinuation = nil
             return
         }
 
+        print("[CameraManager] Photo captured successfully")
         DispatchQueue.main.async {
             self.capturedImage = image
         }

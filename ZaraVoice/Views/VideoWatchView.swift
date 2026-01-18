@@ -326,36 +326,18 @@ struct CameraPreviewView: UIViewRepresentable {
         }
 
         func setSession(_ session: AVCaptureSession) {
+            // Only set session if it's different to avoid unnecessary updates
+            guard videoPreviewLayer.session !== session else { return }
+
             videoPreviewLayer.session = session
             videoPreviewLayer.videoGravity = .resizeAspectFill
-
-            // Set video orientation based on device orientation
-            updateOrientation()
-        }
-
-        func updateOrientation() {
-            guard let connection = videoPreviewLayer.connection else { return }
-
-            let orientation = UIDevice.current.orientation
-            if connection.isVideoRotationAngleSupported(0) {
-                switch orientation {
-                case .portrait:
-                    connection.videoRotationAngle = 90
-                case .portraitUpsideDown:
-                    connection.videoRotationAngle = 270
-                case .landscapeLeft:
-                    connection.videoRotationAngle = 0
-                case .landscapeRight:
-                    connection.videoRotationAngle = 180
-                default:
-                    connection.videoRotationAngle = 90
-                }
-            }
+            // Do NOT set videoRotationAngle here or anywhere - causes error -12784
+            // iOS handles preview orientation automatically via the preview layer
         }
 
         override func layoutSubviews() {
             super.layoutSubviews()
-            updateOrientation()
+            // Do NOT update orientation here - causes error -12784 during capture
         }
     }
 }
