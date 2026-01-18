@@ -4,28 +4,70 @@ import UIKit
 // MARK: - UIImage Orientation Fix
 extension UIImage {
     /// Returns a new image with normalized orientation (up)
-    /// This "bakes in" the EXIF orientation so the pixels are correctly rotated
-    /// Handles the case where size returns raw pixel dimensions, not oriented dimensions
+    /// Uses explicit CGContext transforms to properly rotate the image
     func normalizedOrientation() -> UIImage {
         guard imageOrientation != .up else { return self }
+        guard let cgImage = self.cgImage else { return self }
         
-        // For rotated images, we need to swap width/height for the context
-        let isRotated = imageOrientation == .left || imageOrientation == .right ||
-                        imageOrientation == .leftMirrored || imageOrientation == .rightMirrored
+        var transform = CGAffineTransform.identity
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
         
-        let outputSize: CGSize
-        if isRotated {
-            outputSize = CGSize(width: size.height, height: size.width)
-        } else {
-            outputSize = size
+        // Determine the correct output size and transform based on orientation
+        let outputWidth: CGFloat
+        let outputHeight: CGFloat
+        
+        switch imageOrientation {
+        case .down, .downMirrored:
+            outputWidth = width
+            outputHeight = height
+            transform = transform.translatedBy(x: width, y: height)
+            transform = transform.rotated(by: .pi)
+        case .left, .leftMirrored:
+            outputWidth = height
+            outputHeight = width
+            transform = transform.translatedBy(x: height, y: 0)
+            transform = transform.rotated(by: .pi / 2)
+        case .right, .rightMirrored:
+            outputWidth = height
+            outputHeight = width
+            transform = transform.translatedBy(x: 0, y: width)
+            transform = transform.rotated(by: -.pi / 2)
+        default:
+            outputWidth = width
+            outputHeight = height
         }
         
-        UIGraphicsBeginImageContextWithOptions(outputSize, false, scale)
-        draw(in: CGRect(origin: .zero, size: outputSize))
-        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
+        // Handle mirroring
+        switch imageOrientation {
+        case .upMirrored, .downMirrored:
+            transform = transform.translatedBy(x: width, y: 0)
+            transform = transform.scaledBy(x: -1, y: 1)
+        case .leftMirrored, .rightMirrored:
+            transform = transform.translatedBy(x: height, y: 0)
+            transform = transform.scaledBy(x: -1, y: 1)
+        default:
+            break
+        }
         
-        return normalizedImage ?? self
+        // Create context with correct size
+        guard let context = CGContext(
+            data: nil,
+            width: Int(outputWidth),
+            height: Int(outputHeight),
+            bitsPerComponent: cgImage.bitsPerComponent,
+            bytesPerRow: 0,
+            space: cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: cgImage.bitmapInfo.rawValue
+        ) else {
+            return self
+        }
+        
+        context.concatenate(transform)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        guard let newCGImage = context.makeImage() else { return self }
+        return UIImage(cgImage: newCGImage, scale: scale, orientation: .up)
     }
 }
 
@@ -54,12 +96,10 @@ class CameraManager: NSObject, ObservableObject {
     func setupCamera(position: AVCaptureDevice.Position = .front, forceReset: Bool = false) {
         guard isCameraAvailable else { return }
 
-        // If already set up with same position and not forcing reset, skip
         if captureSession != nil && currentCameraPosition == position && !forceReset {
             return
         }
 
-        // Clear existing session
         captureSession = AVCaptureSession()
         captureSession?.sessionPreset = .photo
         currentCameraPosition = position
@@ -80,7 +120,6 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func startSession(position: AVCaptureDevice.Position = .back) {
-        // Force reset if position changed
         let needsReset = currentCameraPosition != position
         setupCamera(position: position, forceReset: needsReset)
         guard let session = captureSession, !session.isRunning else { return }
@@ -103,7 +142,6 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func capturePhoto(position: AVCaptureDevice.Position = .front) async -> UIImage? {
-        // Set up camera with requested position
         setupCamera(position: position)
 
         guard let photoOutput = photoOutput else {
@@ -111,18 +149,12 @@ class CameraManager: NSObject, ObservableObject {
             return nil
         }
 
-        // Start session if needed
         if captureSession?.isRunning == false {
             DispatchQueue.global(qos: .userInitiated).async {
                 self.captureSession?.startRunning()
             }
-            // Wait for session to start
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-
-        // NOTE: Do NOT set videoRotationAngle at capture time!
-        // Error -12784 occurs when setting orientation during capture.
-        // Orientation is handled post-capture via normalizedOrientation()
 
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
@@ -172,10 +204,7 @@ class CameraManager: NSObject, ObservableObject {
         )
     }
 
-    /// Upload a video frame using the back camera (for watching TV/games)
-    /// Returns the captured image for preview
     func uploadVideoFrame() async throws -> UIImage {
-        // Use back camera for video watching mode
         guard let image = await capturePhoto(position: .back),
               let imageData = image.jpegData(compressionQuality: 0.7) else {
             throw CameraError.captureFailed
@@ -200,10 +229,8 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
-        // Normalize orientation so pixels are correctly rotated
-        // This "bakes in" EXIF orientation before upload
         let image = rawImage.normalizedOrientation()
-        print("[CameraManager] Photo captured - original orientation: \(rawImage.imageOrientation.rawValue), size: \(rawImage.size), normalized size: \(image.size)")
+        print("[CameraManager] Photo captured - orientation: \(rawImage.imageOrientation.rawValue), raw: \(rawImage.size), normalized: \(image.size)")
 
         DispatchQueue.main.async {
             self.capturedImage = image
