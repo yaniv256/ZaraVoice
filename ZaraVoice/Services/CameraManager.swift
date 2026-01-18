@@ -92,10 +92,25 @@ class CameraManager: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        // NOTE: Do NOT set videoRotationAngle at capture time!
-        // Error -12784 occurs when setting orientation during capture.
-        // The photo will be captured in the current sensor orientation.
-        // iOS handles EXIF orientation automatically.
+        // Set photo orientation based on device orientation
+        // Note: Error -12784 may appear in console - this is a harmless Apple bug
+        if let connection = photoOutput.connection(with: .video) {
+            let deviceOrientation = await MainActor.run { UIDevice.current.orientation }
+            if connection.isVideoRotationAngleSupported(0) {
+                switch deviceOrientation {
+                case .portrait:
+                    connection.videoRotationAngle = 90
+                case .portraitUpsideDown:
+                    connection.videoRotationAngle = 270
+                case .landscapeLeft:
+                    connection.videoRotationAngle = 0
+                case .landscapeRight:
+                    connection.videoRotationAngle = 180
+                default:
+                    connection.videoRotationAngle = 90
+                }
+            }
+        }
 
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
