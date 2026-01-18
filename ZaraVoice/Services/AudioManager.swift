@@ -503,7 +503,7 @@ class AudioManager: NSObject, ObservableObject {
         // Queue if:
         // 1. User is actively speaking (don't interrupt their speech)
         // 2. Audio is already playing (chunks must wait for each other)
-        if isSpeaking || isPlaying {
+        if isPlaying {  // Removed isSpeaking check - let Zara play over user speech (web parity)
             audioQueue.append(notification)
             let reason = isSpeaking ? "speech" : "playback"
             logger.info("Audio queued during \(reason), queue size: \(self.audioQueue.count)")
