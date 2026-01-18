@@ -1,6 +1,22 @@
 import AVFoundation
 import UIKit
 
+// MARK: - UIImage Orientation Fix
+extension UIImage {
+    /// Returns a new image with normalized orientation (up)
+    /// This "bakes in" the EXIF orientation so the pixels are correctly rotated
+    func normalizedOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        
+        UIGraphicsBeginImageContextWithOptions(size, false, scale)
+        draw(in: CGRect(origin: .zero, size: size))
+        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return normalizedImage ?? self
+    }
+}
+
 class CameraManager: NSObject, ObservableObject {
     static let shared = CameraManager()
 
@@ -94,8 +110,7 @@ class CameraManager: NSObject, ObservableObject {
 
         // NOTE: Do NOT set videoRotationAngle at capture time!
         // Error -12784 occurs when setting orientation during capture.
-        // The photo will be captured in the current sensor orientation.
-        // iOS handles EXIF orientation automatically.
+        // Orientation is handled post-capture via normalizedOrientation()
 
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
@@ -166,14 +181,18 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
 
         guard let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data) else {
+              let rawImage = UIImage(data: data) else {
             print("[CameraManager] Failed to get image data from photo")
             photoContinuation?.resume(returning: nil)
             photoContinuation = nil
             return
         }
 
-        print("[CameraManager] Photo captured successfully")
+        // Normalize orientation so pixels are correctly rotated
+        // This "bakes in" EXIF orientation before upload
+        let image = rawImage.normalizedOrientation()
+        print("[CameraManager] Photo captured - original orientation: \(rawImage.imageOrientation.rawValue), normalized")
+
         DispatchQueue.main.async {
             self.capturedImage = image
         }
