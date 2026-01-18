@@ -1,6 +1,5 @@
 import AVFoundation
 import UIKit
-import ImageIO
 
 class CameraManager: NSObject, ObservableObject {
     static let shared = CameraManager()
@@ -10,7 +9,8 @@ class CameraManager: NSObject, ObservableObject {
     @Published var isSessionRunning = false
 
     private(set) var captureSession: AVCaptureSession?
-    private var photoOutput: AVCapturePhotoOutput?
+    // Expose photoOutput so VideoWatchView can set rotation on its connection
+    private(set) var photoOutput: AVCapturePhotoOutput?
     private var currentCameraPosition: AVCaptureDevice.Position = .front
 
     private var photoContinuation: CheckedContinuation<UIImage?, Never>?
@@ -87,6 +87,8 @@ class CameraManager: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
+        // Do NOT set videoRotationAngle here - it's set by RotationCoordinator in VideoWatchView
+
         return await withCheckedContinuation { continuation in
             self.photoContinuation = continuation
             let settings = AVCapturePhotoSettings()
@@ -144,48 +146,6 @@ class CameraManager: NSObject, ObservableObject {
         _ = try await APIService.shared.uploadVideoFrame(imageData: imageData)
         return image
     }
-    
-    /// Create a properly oriented image from photo data
-    private func createOrientedImage(from photo: AVCapturePhoto) -> UIImage? {
-        guard let cgImage = photo.cgImageRepresentation() else {
-            print("[CameraManager] Failed to get CGImage")
-            return nil
-        }
-        
-        // Get the metadata orientation
-        let metadata = photo.metadata
-        let orientationValue = metadata[kCGImagePropertyOrientation as String] as? UInt32 ?? 1
-        let cgOrientation = CGImagePropertyOrientation(rawValue: orientationValue) ?? .up
-        
-        // Convert CGImagePropertyOrientation to UIImage.Orientation
-        let uiOrientation: UIImage.Orientation
-        switch cgOrientation {
-        case .up: uiOrientation = .up
-        case .upMirrored: uiOrientation = .upMirrored
-        case .down: uiOrientation = .down
-        case .downMirrored: uiOrientation = .downMirrored
-        case .left: uiOrientation = .left
-        case .leftMirrored: uiOrientation = .leftMirrored
-        case .right: uiOrientation = .right
-        case .rightMirrored: uiOrientation = .rightMirrored
-        }
-        
-        print("[CameraManager] CGImage orientation: \(orientationValue), UI orientation: \(uiOrientation.rawValue)")
-        
-        // Create UIImage with orientation, then render to normalize
-        let orientedImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: uiOrientation)
-        
-        // Render to a new context to bake in the orientation
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0
-        let renderer = UIGraphicsImageRenderer(size: orientedImage.size, format: format)
-        let normalizedImage = renderer.image { context in
-            orientedImage.draw(at: .zero)
-        }
-        
-        print("[CameraManager] Final size: \(normalizedImage.size)")
-        return normalizedImage
-    }
 }
 
 extension CameraManager: AVCapturePhotoCaptureDelegate {
@@ -197,14 +157,17 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
-        guard let image = createOrientedImage(from: photo) else {
-            print("[CameraManager] Failed to create oriented image")
+        // The rotation is already set on the connection by RotationCoordinator,
+        // so fileDataRepresentation includes correct orientation
+        guard let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else {
+            print("[CameraManager] Failed to get image data")
             photoContinuation?.resume(returning: nil)
             photoContinuation = nil
             return
         }
 
-        print("[CameraManager] Photo captured successfully")
+        print("[CameraManager] Photo captured - size: \(image.size), orientation: \(image.imageOrientation.rawValue)")
 
         DispatchQueue.main.async {
             self.capturedImage = image
