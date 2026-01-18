@@ -5,11 +5,23 @@ import UIKit
 extension UIImage {
     /// Returns a new image with normalized orientation (up)
     /// This "bakes in" the EXIF orientation so the pixels are correctly rotated
+    /// Handles the case where size returns raw pixel dimensions, not oriented dimensions
     func normalizedOrientation() -> UIImage {
         guard imageOrientation != .up else { return self }
         
-        UIGraphicsBeginImageContextWithOptions(size, false, scale)
-        draw(in: CGRect(origin: .zero, size: size))
+        // For rotated images, we need to swap width/height for the context
+        let isRotated = imageOrientation == .left || imageOrientation == .right ||
+                        imageOrientation == .leftMirrored || imageOrientation == .rightMirrored
+        
+        let outputSize: CGSize
+        if isRotated {
+            outputSize = CGSize(width: size.height, height: size.width)
+        } else {
+            outputSize = size
+        }
+        
+        UIGraphicsBeginImageContextWithOptions(outputSize, false, scale)
+        draw(in: CGRect(origin: .zero, size: outputSize))
         let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         
@@ -191,7 +203,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         // Normalize orientation so pixels are correctly rotated
         // This "bakes in" EXIF orientation before upload
         let image = rawImage.normalizedOrientation()
-        print("[CameraManager] Photo captured - original orientation: \(rawImage.imageOrientation.rawValue), normalized")
+        print("[CameraManager] Photo captured - original orientation: \(rawImage.imageOrientation.rawValue), size: \(rawImage.size), normalized size: \(image.size)")
 
         DispatchQueue.main.async {
             self.capturedImage = image
