@@ -275,6 +275,12 @@ Copy app to /tmp first and chmod 755. Yaniv can't read agent-zara's home directo
 
 ## Version History
 
+- **2026-01-17**: v2.6 - Video Watch capture fix
+  - Fixed error -12784 (FigCaptureSessionRemote assert) during video frame capture
+  - Removed all videoRotationAngle settings that conflicted with active capture session
+  - iOS now handles preview orientation automatically via preview layer
+  - Video frames reliably upload to EC2 every 30 seconds
+  - Web app Live Stream tab now shows iOS video frames in real-time
 - **2026-01-17**: v2.5 - Continuous listening mode matching web app behavior
   - Mic stays open until explicitly stopped
   - Auto-send on silence, immediately restarts recording for next utterance
