@@ -13,14 +13,12 @@ struct VideoWatchView: View {
     @State private var showThumbnail = false
     @State private var cameraPosition: AVCaptureDevice.Position = .back
 
-    // Pinch-to-zoom state
     @State private var currentZoom: CGFloat = 1.0
     @State private var lastZoom: CGFloat = 1.0
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Full screen camera preview with pinch-to-zoom
                 CameraPreviewView(session: cameraManager.captureSession, photoOutput: cameraManager.photoOutput)
                     .scaleEffect(currentZoom)
                     .gesture(
@@ -41,9 +39,7 @@ struct VideoWatchView: View {
                     }
                     .ignoresSafeArea()
 
-                // Controls overlay
                 VStack {
-                    // Top bar
                     HStack {
                         Button(action: { stopAndDismiss() }) {
                             Image(systemName: "xmark")
@@ -99,7 +95,6 @@ struct VideoWatchView: View {
 
                     Spacer()
 
-                    // Bottom controls
                     HStack(alignment: .center, spacing: 60) {
                         if let lastFrame = lastCapturedFrame {
                             Image(uiImage: lastFrame)
@@ -251,7 +246,6 @@ struct VideoWatchView: View {
     }
 }
 
-// UIViewRepresentable wrapper for AVCaptureVideoPreviewLayer
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession?
     let photoOutput: AVCapturePhotoOutput?
@@ -270,8 +264,14 @@ struct CameraPreviewView: UIViewRepresentable {
 
     class PreviewView: UIView {
         private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
-        private var rotationObservation: NSKeyValueObservation?
+        private var previewObservation: NSKeyValueObservation?
+        private var captureObservation: NSKeyValueObservation?
         private weak var photoOutput: AVCapturePhotoOutput?
+        
+        // Pending rotation to apply after session stabilizes
+        private var pendingPreviewRotation: CGFloat?
+        private var pendingCaptureRotation: CGFloat?
+        private var isInitialized = false
         
         override class var layerClass: AnyClass {
             return AVCaptureVideoPreviewLayer.self
@@ -284,47 +284,82 @@ struct CameraPreviewView: UIViewRepresentable {
         func setSession(_ session: AVCaptureSession, photoOutput: AVCapturePhotoOutput?) {
             guard videoPreviewLayer.session !== session else { return }
 
+            // Clear any pending rotation
+            isInitialized = false
+            
             videoPreviewLayer.session = session
             videoPreviewLayer.videoGravity = .resizeAspectFill
             self.photoOutput = photoOutput
             
-            // Set up rotation coordinator for the video device
             if let device = session.inputs
                 .compactMap({ $0 as? AVCaptureDeviceInput })
                 .first(where: { $0.device.hasMediaType(.video) })?
                 .device {
                 setupRotationCoordinator(for: device)
             }
+            
+            // Delay initial rotation to let session stabilize
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.isInitialized = true
+                self?.applyPendingRotations()
+            }
         }
         
         private func setupRotationCoordinator(for device: AVCaptureDevice) {
-            // Create rotation coordinator - it monitors device orientation
             rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: videoPreviewLayer)
             
-            // Apply initial rotation
-            applyRotation()
+            guard let coordinator = rotationCoordinator else { return }
             
-            // Observe rotation changes
-            rotationObservation = rotationCoordinator?.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self] _, _ in
+            // Store initial rotations as pending
+            pendingPreviewRotation = coordinator.videoRotationAngleForHorizonLevelPreview
+            pendingCaptureRotation = coordinator.videoRotationAngleForHorizonLevelCapture
+            
+            // Observe preview rotation changes - only apply when initialized
+            previewObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coord, _ in
                 DispatchQueue.main.async {
-                    self?.applyRotation()
+                    guard let self = self else { return }
+                    if self.isInitialized {
+                        self.applyPreviewRotation(coord.videoRotationAngleForHorizonLevelPreview)
+                    } else {
+                        self.pendingPreviewRotation = coord.videoRotationAngleForHorizonLevelPreview
+                    }
+                }
+            }
+            
+            // Observe capture rotation changes - only apply when initialized
+            captureObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self] coord, _ in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if self.isInitialized {
+                        self.applyCaptureRotation(coord.videoRotationAngleForHorizonLevelCapture)
+                    } else {
+                        self.pendingCaptureRotation = coord.videoRotationAngleForHorizonLevelCapture
+                    }
                 }
             }
         }
         
-        private func applyRotation() {
-            guard let coordinator = rotationCoordinator else { return }
-            
-            // Update preview layer rotation
-            if videoPreviewLayer.connection?.isVideoRotationAngleSupported(coordinator.videoRotationAngleForHorizonLevelPreview) == true {
-                videoPreviewLayer.connection?.videoRotationAngle = coordinator.videoRotationAngleForHorizonLevelPreview
+        private func applyPendingRotations() {
+            if let previewRotation = pendingPreviewRotation {
+                applyPreviewRotation(previewRotation)
+                pendingPreviewRotation = nil
             }
-            
-            // Update photo output connection rotation
-            if let photoConnection = photoOutput?.connection(with: .video),
-               photoConnection.isVideoRotationAngleSupported(coordinator.videoRotationAngleForHorizonLevelCapture) {
-                photoConnection.videoRotationAngle = coordinator.videoRotationAngleForHorizonLevelCapture
+            if let captureRotation = pendingCaptureRotation {
+                applyCaptureRotation(captureRotation)
+                pendingCaptureRotation = nil
             }
+        }
+        
+        private func applyPreviewRotation(_ angle: CGFloat) {
+            guard let previewConnection = videoPreviewLayer.connection,
+                  previewConnection.isVideoRotationAngleSupported(angle) else { return }
+            previewConnection.videoRotationAngle = angle
+        }
+        
+        private func applyCaptureRotation(_ angle: CGFloat) {
+            guard let photoConnection = photoOutput?.connection(with: .video),
+                  photoConnection.isVideoRotationAngleSupported(angle) else { return }
+            photoConnection.videoRotationAngle = angle
         }
 
         override func layoutSubviews() {
@@ -332,7 +367,8 @@ struct CameraPreviewView: UIViewRepresentable {
         }
         
         deinit {
-            rotationObservation?.invalidate()
+            previewObservation?.invalidate()
+            captureObservation?.invalidate()
         }
     }
 }
